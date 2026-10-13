@@ -27,21 +27,31 @@ pub struct TokenRequest {
     client_secret: String,
 }
 
-pub async fn token(State(st): State<AppState>, body: Option<Json<TokenRequest>>) -> ApiResult<Json<Value>> {
+pub async fn token(State(st): State<AppState>, body: Option<Json<TokenRequest>>) -> ApiResult<axum::response::Response> {
     let Json(req) = body.ok_or_else(|| {
         ApiError::BadRequest("Envia JSON com clientId e clientSecret, e o header Content-Type: application/json.".into())
     })?;
+    let client_id = req.client_id.trim().to_string();
     let row: Option<(Uuid, String, String)> =
         sqlx::query_as("SELECT id, secret_hash, name FROM students WHERE client_id = $1")
-            .bind(req.client_id.trim())
+            .bind(&client_id)
             .fetch_optional(&st.db)
             .await?;
-    let Some((id, _, name)) = row.filter(|(_, hash, _)| auth::verify_secret(req.client_secret.trim(), hash)) else {
-        return Err(ApiError::Unauthorized("clientId ou clientSecret errados.".into()));
+    let ok = row.as_ref().is_some_and(|(_, hash, _)| auth::verify_secret(req.client_secret.trim(), hash));
+    let name = row.as_ref().map(|(_, _, n)| n.clone()).unwrap_or_default();
+    let Some((id, _, _)) = row.filter(|_| ok) else {
+        // a tentativa falhada fica registada com o clientId que foi tentado
+        let mut res = axum::response::IntoResponse::into_response(ApiError::Unauthorized("clientId ou clientSecret errados.".into()));
+        res.extensions_mut().insert(crate::usage::LoggedClient { client_id, name, event: "login_failed" });
+        return Ok(res);
     };
     sqlx::query("UPDATE students SET last_seen = now() WHERE id = $1").bind(id).execute(&st.db).await?;
-    let token = auth::issue(&st.jwt_secret, id, req.client_id.trim(), &name)?;
-    Ok(Json(json!({ "accessToken": token, "tokenType": "Bearer", "expiresIn": auth::TOKEN_TTL_SECS })))
+    let token = auth::issue(&st.jwt_secret, id, &client_id, &name)?;
+    let mut res = axum::response::IntoResponse::into_response(Json(
+        json!({ "accessToken": token, "tokenType": "Bearer", "expiresIn": auth::TOKEN_TTL_SECS }),
+    ));
+    res.extensions_mut().insert(crate::usage::LoggedClient { client_id, name, event: "login" });
+    Ok(res)
 }
 
 pub async fn me(Student(c): Student) -> Json<Value> {
@@ -457,4 +467,46 @@ pub async fn admin_delete_student(State(st): State<AppState>, _a: Admin, Path(cl
         remove_photo(&st, &p).await;
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Resumo de uso por aluno: pedidos, dias ativos, último pedido, relatos e endpoints mais usados.
+pub async fn admin_usage(State(st): State<AppState>, _a: Admin) -> ApiResult<Json<Value>> {
+    let rows: Vec<(String, String, Option<String>, i64, i64, i64, i64, Option<OffsetDateTime>, Option<OffsetDateTime>, i64)> = sqlx::query_as(
+        "SELECT s.client_id, s.name, s.github,
+                count(l.id) FILTER (WHERE l.event IS DISTINCT FROM 'login_failed'),
+                count(l.id) FILTER (WHERE l.at > now() - interval '24 hours'),
+                count(DISTINCT (l.at AT TIME ZONE 'Atlantic/Azores')::date),
+                count(l.id) FILTER (WHERE l.event = 'login_failed'),
+                min(l.at), max(l.at),
+                (SELECT count(*) FROM reports r WHERE r.student_id = s.id)
+         FROM students s LEFT JOIN request_log l ON l.client_id = s.client_id
+         GROUP BY s.id ORDER BY s.name",
+    )
+    .fetch_all(&st.db)
+    .await?;
+    let top: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT client_id, method || ' ' || regexp_replace(split_part(path, '?', 1), '[0-9a-f]{8}-[0-9a-f-]{27}', '{id}'), count(*)
+         FROM request_log WHERE client_id IS NOT NULL
+         GROUP BY 1, 2 ORDER BY 1, 3 DESC",
+    )
+    .fetch_all(&st.db)
+    .await?;
+    Ok(Json(Value::Array(
+        rows.into_iter()
+            .map(|(client_id, name, github, requests, last24h, days, failed, first, last, reports)| {
+                let endpoints: Vec<Value> = top
+                    .iter()
+                    .filter(|(c, _, _)| *c == client_id)
+                    .take(5)
+                    .map(|(_, e, n)| json!({ "endpoint": e, "count": n }))
+                    .collect();
+                json!({
+                    "clientId": client_id, "name": name, "github": github,
+                    "requests": requests, "last24h": last24h, "activeDays": days, "failedLogins": failed,
+                    "firstRequest": first.map(ts), "lastRequest": last.map(ts),
+                    "reports": reports, "topEndpoints": endpoints,
+                })
+            })
+            .collect(),
+    )))
 }

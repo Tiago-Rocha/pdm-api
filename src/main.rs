@@ -7,6 +7,7 @@ mod data;
 mod error;
 mod ipma;
 mod routes;
+mod usage;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -36,6 +37,8 @@ pub struct AppState {
     pub media_dir: Arc<PathBuf>,
     /// endereço público, sem barra no fim, para os URLs das imagens
     pub public_url: Arc<String>,
+    /// registo de uso (base de dados e Datadog)
+    pub usage: usage::Sender,
 }
 
 const OPENAPI: &str = include_str!("openapi.json");
@@ -60,12 +63,24 @@ async fn main() -> anyhow::Result<()> {
     tokio::fs::create_dir_all(&media_dir).await.context("criar MEDIA_DIR")?;
     let static_dir = std::env::var("STATIC_DIR").unwrap_or_else(|_| "static".into());
 
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .user_agent("pdm-api (UC de PDM, Universidade dos Açores)")
+        .build()?;
+    let dd_api_key = std::env::var("DD_API_KEY").ok().filter(|k| !k.trim().is_empty());
+    if dd_api_key.is_none() {
+        tracing::warn!("sem DD_API_KEY: o registo de uso só vai para a base de dados");
+    }
+    let usage = usage::spawn(
+        db.clone(),
+        http.clone(),
+        dd_api_key,
+        std::env::var("DD_SITE").unwrap_or_else(|_| "datadoghq.eu".into()),
+    );
     let state = AppState {
         db,
-        http: reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(8))
-            .user_agent("pdm-api (UC de PDM, Universidade dos Açores)")
-            .build()?,
+        http,
+        usage,
         ipma: Arc::new(ipma::Cache::default()),
         jwt_secret: Arc::new(var("JWT_SECRET")?.into_bytes()),
         admin_key: Arc::new(var("ADMIN_KEY")?),
@@ -89,7 +104,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/students", get(routes::admin_students).post(routes::admin_create_student))
         .route("/students/{client_id}", delete(routes::admin_delete_student))
         .route("/students/{client_id}/reset-secret", post(routes::admin_reset_secret))
-        .route("/reports/{id}", delete(routes::admin_delete_report));
+        .route("/reports/{id}", delete(routes::admin_delete_report))
+        .route("/usage", get(routes::admin_usage));
 
     let app = Router::new()
         .route("/", get(|| async { Redirect::temporary("/docs") }))
@@ -100,6 +116,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/admin", admin)
         .nest_service("/static", ServeDir::new(static_dir))
         .nest_service("/media", ServeDir::new(media_dir))
+        .layer(axum::middleware::from_fn_with_state(state.clone(), usage::track))
         .layer(DefaultBodyLimit::max(MAX_UPLOAD))
         // a app Flutter no Chrome corre noutra origem (localhost): é preciso CORS
         .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any))

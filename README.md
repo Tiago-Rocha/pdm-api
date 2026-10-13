@@ -20,6 +20,11 @@ Rotas em `/admin`, com o header `X-Admin-Key`:
 - `POST /admin/students/{clientId}/reset-secret`: gera um segredo novo.
 - `DELETE /admin/students/{clientId}`: apaga um aluno e os seus relatos.
 - `DELETE /admin/reports/{id}`: apaga qualquer relato.
+- `GET /admin/usage`: uso da API por aluno (pedidos, últimas 24 h, dias ativos, logins falhados, relatos, endpoints mais usados).
+
+## Registo de uso
+
+Cada pedido (menos `/health`) fica na tabela `request_log` com o aluno, o método, o caminho, o código, o tempo, o IP e o user agent. Se `DD_API_KEY` estiver definida em `/etc/pdm-api.env`, os mesmos eventos vão para os logs do Datadog (`DD_SITE`, por defeito `datadoghq.eu`), com `service:pdm-api` e as tags `client_id:...` e `event:login|login_failed`.
 
 ## Deploy
 
