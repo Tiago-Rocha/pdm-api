@@ -1,0 +1,1171 @@
+{
+ "openapi": "3.0.3",
+ "info": {
+  "title": "API Tempo Açores",
+  "version": "1.0.0",
+  "description": "API da UC de PDM (CTeSP DAW, ESTA, Universidade dos Açores, 2026/27).\n\n1. Troca o teu `clientId` e `clientSecret` por um token em **POST /v1/auth/token**.\n2. Envia o token em todos os outros pedidos: `Authorization: Bearer <token>`. Aqui no Swagger, usa o botão **Authorize**.\n3. O token dura 1 hora. Quando expirar (401), pede outro.\n\nA previsão vem do IPMA (dados abertos) e é atualizada de 30 em 30 minutos. Os relatos são partilhados pela turma: todos veem os de todos, cada um só altera os seus.\n\nErros vêm sempre assim: `{\"error\": {\"code\": \"not_found\", \"message\": \"...\"}}`."
+ },
+ "servers": [
+  {
+   "url": "/"
+  }
+ ],
+ "tags": [
+  {
+   "name": "Autenticação"
+  },
+  {
+   "name": "Ilhas e trilhos"
+  },
+  {
+   "name": "Previsão"
+  },
+  {
+   "name": "Relatos"
+  }
+ ],
+ "paths": {
+  "/v1/auth/token": {
+   "post": {
+    "tags": [
+     "Autenticação"
+    ],
+    "summary": "Obter um token",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TokenRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Token válido durante 1 hora.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Token"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Pedido inválido (campo em falta, texto vazio ou com mais de 500 caracteres, fotografia que não é JPEG/PNG/WebP).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "clientId ou clientSecret errados.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/me": {
+   "get": {
+    "tags": [
+     "Autenticação"
+    ],
+    "summary": "Quem sou eu (para testar o token)",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "O aluno do token.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Me"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/islands": {
+   "get": {
+    "tags": [
+     "Ilhas e trilhos"
+    ],
+    "summary": "As nove ilhas",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Lista de ilhas.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Island"
+         }
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/islands/{id}": {
+   "get": {
+    "tags": [
+     "Ilhas e trilhos"
+    ],
+    "summary": "Uma ilha",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "description": "Id da ilha",
+      "schema": {
+       "type": "string",
+       "example": "pico"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "A ilha.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Island"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Não existe.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/islands/{id}/forecast": {
+   "get": {
+    "tags": [
+     "Previsão"
+    ],
+    "summary": "Previsão a 5 dias de uma ilha (IPMA)",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "description": "Id da ilha",
+      "schema": {
+       "type": "string",
+       "example": "sao-miguel"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "A previsão.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Forecast"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Não existe.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "502": {
+      "description": "O IPMA não respondeu e não há previsão em cache.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/trails": {
+   "get": {
+    "tags": [
+     "Ilhas e trilhos"
+    ],
+    "summary": "Trilhos, de todas as ilhas ou de uma",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "islandId",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "example": "faial"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Lista de trilhos.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Trail"
+         }
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Não existe.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/trails/{id}": {
+   "get": {
+    "tags": [
+     "Ilhas e trilhos"
+    ],
+    "summary": "Um trilho",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "description": "Id do trilho",
+      "schema": {
+       "type": "string",
+       "example": "lagoa-do-fogo"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "O trilho.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Trail"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Não existe.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/reports": {
+   "get": {
+    "tags": [
+     "Relatos"
+    ],
+    "summary": "Feed de relatos da turma (mais recentes primeiro)",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "islandId",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "example": "pico"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "default": 50,
+       "minimum": 1,
+       "maximum": 100
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Lista de relatos.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Report"
+         }
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Não existe.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "Relatos"
+    ],
+    "summary": "Criar um relato (só texto em JSON, ou texto e fotografia em multipart)",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/NewReport"
+       }
+      },
+      "multipart/form-data": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "islandId",
+         "text"
+        ],
+        "properties": {
+         "islandId": {
+          "type": "string",
+          "example": "pico"
+         },
+         "text": {
+          "type": "string",
+          "example": "Nevoeiro a meio da montanha."
+         },
+         "photo": {
+          "type": "string",
+          "format": "binary",
+          "description": "JPEG, PNG ou WebP, até 8 MB. É reduzida a 1280 px."
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "O relato criado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Report"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Pedido inválido (campo em falta, texto vazio ou com mais de 500 caracteres, fotografia que não é JPEG/PNG/WebP).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Não existe.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "413": {
+      "description": "Fotografia com mais de 8 MB.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/reports/{id}": {
+   "get": {
+    "tags": [
+     "Relatos"
+    ],
+    "summary": "Um relato",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "description": "Id do relato",
+      "schema": {
+       "type": "string",
+       "example": ""
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "O relato.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Report"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Não existe.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "tags": [
+     "Relatos"
+    ],
+    "summary": "Alterar o texto ou a ilha de um relato teu",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "description": "Id do relato",
+      "schema": {
+       "type": "string",
+       "example": ""
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EditReport"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "O relato alterado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Report"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Pedido inválido (campo em falta, texto vazio ou com mais de 500 caracteres, fotografia que não é JPEG/PNG/WebP).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "O relato não é teu.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Não existe.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "Relatos"
+    ],
+    "summary": "Apagar um relato teu",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "description": "Id do relato",
+      "schema": {
+       "type": "string",
+       "example": ""
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Apagado."
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "O relato não é teu.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Não existe.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/reports/{id}/photo": {
+   "put": {
+    "tags": [
+     "Relatos"
+    ],
+    "summary": "Pôr ou substituir a fotografia de um relato teu",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "description": "Id do relato",
+      "schema": {
+       "type": "string",
+       "example": ""
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "photo"
+        ],
+        "properties": {
+         "photo": {
+          "type": "string",
+          "format": "binary"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "O relato com a fotografia nova.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Report"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Pedido inválido (campo em falta, texto vazio ou com mais de 500 caracteres, fotografia que não é JPEG/PNG/WebP).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "O relato não é teu.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Não existe.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "413": {
+      "description": "Fotografia com mais de 8 MB.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "securitySchemes": {
+   "bearerAuth": {
+    "type": "http",
+    "scheme": "bearer",
+    "bearerFormat": "JWT"
+   }
+  },
+  "schemas": {
+   "Error": {
+    "type": "object",
+    "properties": {
+     "error": {
+      "type": "object",
+      "properties": {
+       "code": {
+        "type": "string",
+        "example": "not_found"
+       },
+       "message": {
+        "type": "string",
+        "example": "Esse relato não existe."
+       }
+      }
+     }
+    }
+   },
+   "TokenRequest": {
+    "type": "object",
+    "required": [
+     "clientId",
+     "clientSecret"
+    ],
+    "properties": {
+     "clientId": {
+      "type": "string",
+      "example": "pdm-ab12cd"
+     },
+     "clientSecret": {
+      "type": "string",
+      "example": "o-teu-segredo"
+     }
+    }
+   },
+   "Token": {
+    "type": "object",
+    "properties": {
+     "accessToken": {
+      "type": "string"
+     },
+     "tokenType": {
+      "type": "string",
+      "example": "Bearer"
+     },
+     "expiresIn": {
+      "type": "integer",
+      "example": 3600
+     }
+    }
+   },
+   "Me": {
+    "type": "object",
+    "properties": {
+     "clientId": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "tokenExpiresAt": {
+      "type": "integer",
+      "description": "Unix timestamp"
+     }
+    }
+   },
+   "Island": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "example": "pico"
+     },
+     "name": {
+      "type": "string",
+      "example": "Pico"
+     },
+     "imageUrl": {
+      "type": "string"
+     },
+     "trailCount": {
+      "type": "integer",
+      "example": 1
+     }
+    }
+   },
+   "Trail": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "example": "montanha-do-pico"
+     },
+     "name": {
+      "type": "string"
+     },
+     "islandId": {
+      "type": "string"
+     },
+     "islandName": {
+      "type": "string"
+     },
+     "imageUrl": {
+      "type": "string"
+     },
+     "distanceKm": {
+      "type": "number",
+      "example": 7.6
+     },
+     "duration": {
+      "type": "string",
+      "example": "7 h"
+     },
+     "difficulty": {
+      "type": "string",
+      "enum": [
+       "easy",
+       "medium",
+       "hard"
+      ]
+     },
+     "difficultyLabel": {
+      "type": "string",
+      "example": "Difícil"
+     },
+     "description": {
+      "type": "string"
+     }
+    }
+   },
+   "Forecast": {
+    "type": "object",
+    "properties": {
+     "islandId": {
+      "type": "string"
+     },
+     "islandName": {
+      "type": "string"
+     },
+     "location": {
+      "type": "string",
+      "example": "Ponta Delgada"
+     },
+     "source": {
+      "type": "string",
+      "example": "IPMA"
+     },
+     "updatedAt": {
+      "type": "string"
+     },
+     "days": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Day"
+      }
+     }
+    }
+   },
+   "Day": {
+    "type": "object",
+    "properties": {
+     "date": {
+      "type": "string",
+      "format": "date",
+      "example": "2026-10-13"
+     },
+     "weatherType": {
+      "type": "object",
+      "properties": {
+       "id": {
+        "type": "integer",
+        "example": 3
+       },
+       "description": {
+        "type": "string",
+        "example": "Céu parcialmente nublado"
+       },
+       "category": {
+        "type": "string",
+        "enum": [
+         "sunny",
+         "partlyCloudy",
+         "cloudy",
+         "rain",
+         "storm"
+        ]
+       }
+      }
+     },
+     "tMin": {
+      "type": "number",
+      "example": 17.6
+     },
+     "tMax": {
+      "type": "number",
+      "example": 23.6
+     },
+     "rainChance": {
+      "type": "integer",
+      "example": 20
+     },
+     "wind": {
+      "type": "object",
+      "properties": {
+       "direction": {
+        "type": "string",
+        "example": "SE"
+       },
+       "class": {
+        "type": "integer",
+        "example": 2
+       },
+       "description": {
+        "type": "string",
+        "example": "Moderado"
+       }
+      }
+     }
+    }
+   },
+   "NewReport": {
+    "type": "object",
+    "required": [
+     "islandId",
+     "text"
+    ],
+    "properties": {
+     "islandId": {
+      "type": "string",
+      "example": "pico"
+     },
+     "text": {
+      "type": "string",
+      "maxLength": 500,
+      "example": "Nevoeiro a meio da montanha."
+     }
+    }
+   },
+   "EditReport": {
+    "type": "object",
+    "properties": {
+     "islandId": {
+      "type": "string"
+     },
+     "text": {
+      "type": "string",
+      "maxLength": 500
+     }
+    }
+   },
+   "Report": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid"
+     },
+     "islandId": {
+      "type": "string"
+     },
+     "islandName": {
+      "type": "string"
+     },
+     "text": {
+      "type": "string"
+     },
+     "photoUrl": {
+      "type": "string",
+      "nullable": true
+     },
+     "author": {
+      "type": "object",
+      "properties": {
+       "clientId": {
+        "type": "string"
+       },
+       "name": {
+        "type": "string"
+       }
+      }
+     },
+     "mine": {
+      "type": "boolean",
+      "description": "true se o relato é do aluno do token"
+     },
+     "createdAt": {
+      "type": "string",
+      "format": "date-time"
+     },
+     "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+     }
+    }
+   }
+  }
+ }
+}

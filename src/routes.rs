@@ -1,0 +1,443 @@
+//! Rotas da API v1.
+use axum::extract::{FromRequest, Multipart, Path, Query, Request, State};
+use axum::http::{header, StatusCode};
+use axum::Json;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
+use uuid::Uuid;
+
+use crate::auth::{self, Admin, Student};
+use crate::data::{self, Difficulty, ISLANDS, TRAILS};
+use crate::error::{ApiError, ApiResult};
+use crate::AppState;
+
+const MAX_TEXT: usize = 500;
+const MAX_PHOTO_SIDE: u32 = 1280;
+
+// ---------- autenticação ----------
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenRequest {
+    #[serde(alias = "client_id")]
+    client_id: String,
+    #[serde(alias = "client_secret")]
+    client_secret: String,
+}
+
+pub async fn token(State(st): State<AppState>, body: Option<Json<TokenRequest>>) -> ApiResult<Json<Value>> {
+    let Json(req) = body.ok_or_else(|| {
+        ApiError::BadRequest("Envia JSON com clientId e clientSecret, e o header Content-Type: application/json.".into())
+    })?;
+    let row: Option<(Uuid, String, String)> =
+        sqlx::query_as("SELECT id, secret_hash, name FROM students WHERE client_id = $1")
+            .bind(req.client_id.trim())
+            .fetch_optional(&st.db)
+            .await?;
+    let Some((id, _, name)) = row.filter(|(_, hash, _)| auth::verify_secret(req.client_secret.trim(), hash)) else {
+        return Err(ApiError::Unauthorized("clientId ou clientSecret errados.".into()));
+    };
+    sqlx::query("UPDATE students SET last_seen = now() WHERE id = $1").bind(id).execute(&st.db).await?;
+    let token = auth::issue(&st.jwt_secret, id, req.client_id.trim(), &name)?;
+    Ok(Json(json!({ "accessToken": token, "tokenType": "Bearer", "expiresIn": auth::TOKEN_TTL_SECS })))
+}
+
+pub async fn me(Student(c): Student) -> Json<Value> {
+    Json(json!({ "clientId": c.client_id, "name": c.name, "tokenExpiresAt": c.exp }))
+}
+
+// ---------- ilhas, trilhos, previsão ----------
+
+fn island_json(st: &AppState, i: &data::Island) -> Value {
+    json!({
+        "id": i.id,
+        "name": i.name,
+        "imageUrl": format!("{}/static/islands/{}", st.public_url, i.image),
+        "trailCount": TRAILS.iter().filter(|t| t.island_id == i.id).count(),
+    })
+}
+
+fn trail_json(st: &AppState, t: &data::Trail) -> Value {
+    let island = data::island(t.island_id).expect("trilho com ilha válida");
+    json!({
+        "id": t.id,
+        "name": t.name,
+        "islandId": t.island_id,
+        "islandName": island.name,
+        "imageUrl": format!("{}/static/islands/{}", st.public_url, island.image),
+        "distanceKm": t.distance_km,
+        "duration": t.duration,
+        "difficulty": t.difficulty,
+        "difficultyLabel": match t.difficulty { Difficulty::Easy => "Fácil", Difficulty::Medium => "Média", Difficulty::Hard => "Difícil" },
+        "description": t.description,
+    })
+}
+
+fn find_island(id: &str) -> ApiResult<&'static data::Island> {
+    data::island(id).ok_or_else(|| ApiError::NotFound(format!("Não há nenhuma ilha com o id \"{id}\".")))
+}
+
+pub async fn islands(State(st): State<AppState>, _s: Student) -> Json<Value> {
+    Json(Value::Array(ISLANDS.iter().map(|i| island_json(&st, i)).collect()))
+}
+
+pub async fn island(State(st): State<AppState>, _s: Student, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    Ok(Json(island_json(&st, find_island(&id)?)))
+}
+
+pub async fn forecast(State(st): State<AppState>, _s: Student, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    let i = find_island(&id)?;
+    let f = st.ipma.forecast(&st.http, i.ipma_id).await?;
+    Ok(Json(json!({
+        "islandId": i.id,
+        "islandName": i.name,
+        "location": i.ipma_local,
+        "source": "IPMA",
+        "updatedAt": f.updated_at,
+        "days": f.days,
+    })))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IslandFilter {
+    island_id: Option<String>,
+    limit: Option<i64>,
+}
+
+pub async fn trails(State(st): State<AppState>, _s: Student, Query(q): Query<IslandFilter>) -> ApiResult<Json<Value>> {
+    if let Some(id) = &q.island_id {
+        find_island(id)?;
+    }
+    Ok(Json(Value::Array(
+        TRAILS
+            .iter()
+            .filter(|t| q.island_id.as_deref().is_none_or(|id| t.island_id == id))
+            .map(|t| trail_json(&st, t))
+            .collect(),
+    )))
+}
+
+pub async fn trail(State(st): State<AppState>, _s: Student, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    TRAILS
+        .iter()
+        .find(|t| t.id == id)
+        .map(|t| Json(trail_json(&st, t)))
+        .ok_or_else(|| ApiError::NotFound(format!("Não há nenhum trilho com o id \"{id}\".")))
+}
+
+// ---------- relatos ----------
+
+#[derive(sqlx::FromRow)]
+struct ReportRow {
+    id: Uuid,
+    student_id: Uuid,
+    island_id: String,
+    text: String,
+    photo: Option<String>,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
+    client_id: String,
+    name: String,
+}
+
+const REPORT_SELECT: &str = "SELECT r.id, r.student_id, r.island_id, r.text, r.photo, r.created_at, r.updated_at, s.client_id, s.name
+     FROM reports r JOIN students s ON s.id = r.student_id";
+
+fn ts(t: OffsetDateTime) -> String {
+    t.format(&Rfc3339).unwrap_or_default()
+}
+
+fn report_json(st: &AppState, r: &ReportRow, me: Uuid) -> Value {
+    json!({
+        "id": r.id,
+        "islandId": r.island_id,
+        "islandName": data::island(&r.island_id).map(|i| i.name).unwrap_or(""),
+        "text": r.text,
+        "photoUrl": r.photo.as_ref().map(|p| format!("{}/media/{p}", st.public_url)),
+        "author": { "clientId": r.client_id, "name": r.name },
+        "mine": r.student_id == me,
+        "createdAt": ts(r.created_at),
+        "updatedAt": ts(r.updated_at),
+    })
+}
+
+async fn load_report(st: &AppState, id: Uuid) -> ApiResult<ReportRow> {
+    sqlx::query_as::<_, ReportRow>(&format!("{REPORT_SELECT} WHERE r.id = $1"))
+        .bind(id)
+        .fetch_optional(&st.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Esse relato não existe.".into()))
+}
+
+fn parse_id(id: &str) -> ApiResult<Uuid> {
+    Uuid::parse_str(id).map_err(|_| ApiError::NotFound("Esse relato não existe.".into()))
+}
+
+fn clean_text(text: &str) -> ApiResult<String> {
+    let t = text.trim();
+    if t.is_empty() {
+        return Err(ApiError::BadRequest("O texto do relato não pode estar vazio.".into()));
+    }
+    if t.chars().count() > MAX_TEXT {
+        return Err(ApiError::BadRequest(format!("O texto tem no máximo {MAX_TEXT} caracteres.")));
+    }
+    Ok(t.to_string())
+}
+
+/// Lê, valida e grava uma fotografia: redimensionada a 1280 px no lado maior, em JPEG.
+async fn save_photo(st: &AppState, bytes: &[u8]) -> ApiResult<String> {
+    let img = image::load_from_memory(bytes)
+        .map_err(|_| ApiError::BadRequest("A fotografia tem de ser JPEG, PNG ou WebP.".into()))?;
+    let img = if img.width() > MAX_PHOTO_SIDE || img.height() > MAX_PHOTO_SIDE {
+        img.resize(MAX_PHOTO_SIDE, MAX_PHOTO_SIDE, image::imageops::FilterType::Lanczos3)
+    } else {
+        img
+    };
+    let name = format!("{}.jpg", Uuid::new_v4());
+    let mut out = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 82)
+        .encode_image(&img.to_rgb8())
+        .map_err(|e| ApiError::Internal(e.into()))?;
+    tokio::fs::write(st.media_dir.join(&name), out).await.map_err(|e| ApiError::Internal(e.into()))?;
+    Ok(name)
+}
+
+async fn remove_photo(st: &AppState, photo: &Option<String>) {
+    if let Some(p) = photo {
+        let _ = tokio::fs::remove_file(st.media_dir.join(p)).await;
+    }
+}
+
+pub async fn list_reports(
+    State(st): State<AppState>,
+    Student(c): Student,
+    Query(q): Query<IslandFilter>,
+) -> ApiResult<Json<Value>> {
+    let limit = q.limit.unwrap_or(50).clamp(1, 100);
+    let rows: Vec<ReportRow> = match &q.island_id {
+        Some(id) => {
+            find_island(id)?;
+            sqlx::query_as(&format!("{REPORT_SELECT} WHERE r.island_id = $1 ORDER BY r.created_at DESC LIMIT $2"))
+                .bind(id)
+                .bind(limit)
+                .fetch_all(&st.db)
+                .await?
+        }
+        None => {
+            sqlx::query_as(&format!("{REPORT_SELECT} ORDER BY r.created_at DESC LIMIT $1"))
+                .bind(limit)
+                .fetch_all(&st.db)
+                .await?
+        }
+    };
+    Ok(Json(Value::Array(rows.iter().map(|r| report_json(&st, r, c.sub)).collect())))
+}
+
+pub async fn get_report(State(st): State<AppState>, Student(c): Student, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    let r = load_report(&st, parse_id(&id)?).await?;
+    Ok(Json(report_json(&st, &r, c.sub)))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewReport {
+    #[serde(alias = "island_id")]
+    island_id: String,
+    text: String,
+}
+
+/// POST /v1/reports: JSON {islandId, text}, ou multipart/form-data com islandId, text e photo (opcional).
+pub async fn create_report(State(st): State<AppState>, Student(c): Student, req: Request) -> ApiResult<(StatusCode, Json<Value>)> {
+    let ctype = req.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+    let (island_id, text, photo_bytes) = if ctype.starts_with("multipart/form-data") {
+        let mut mp = Multipart::from_request(req, &st).await.map_err(|e| ApiError::BadRequest(e.body_text()))?;
+        let (mut island, mut text, mut photo) = (None, None, None);
+        while let Some(field) = mp.next_field().await.map_err(|e| ApiError::BadRequest(e.body_text()))? {
+            match field.name().unwrap_or("") {
+                "islandId" | "island_id" => island = Some(field.text().await.map_err(|e| ApiError::BadRequest(e.body_text()))?),
+                "text" => text = Some(field.text().await.map_err(|e| ApiError::BadRequest(e.body_text()))?),
+                "photo" => photo = Some(field.bytes().await.map_err(|e| ApiError::BadRequest(e.body_text()))?.to_vec()),
+                _ => {}
+            }
+        }
+        (
+            island.ok_or_else(|| ApiError::BadRequest("Falta o campo islandId.".into()))?,
+            text.ok_or_else(|| ApiError::BadRequest("Falta o campo text.".into()))?,
+            photo.filter(|p| !p.is_empty()),
+        )
+    } else if ctype.starts_with("application/json") {
+        let Json(r) = Json::<NewReport>::from_request(req, &st)
+            .await
+            .map_err(|e| ApiError::BadRequest(format!("JSON inválido: {}", e.body_text())))?;
+        (r.island_id, r.text, None)
+    } else {
+        return Err(ApiError::BadRequest(
+            "Envia application/json com islandId e text, ou multipart/form-data com islandId, text e photo.".into(),
+        ));
+    };
+    find_island(&island_id)?;
+    let text = clean_text(&text)?;
+    let photo = match photo_bytes {
+        Some(b) => Some(save_photo(&st, &b).await?),
+        None => None,
+    };
+    let id = Uuid::new_v4();
+    sqlx::query("INSERT INTO reports (id, student_id, island_id, text, photo) VALUES ($1, $2, $3, $4, $5)")
+        .bind(id)
+        .bind(c.sub)
+        .bind(&island_id)
+        .bind(&text)
+        .bind(&photo)
+        .execute(&st.db)
+        .await?;
+    let r = load_report(&st, id).await?;
+    Ok((StatusCode::CREATED, Json(report_json(&st, &r, c.sub))))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditReport {
+    #[serde(alias = "island_id")]
+    island_id: Option<String>,
+    text: Option<String>,
+}
+
+async fn own_report(st: &AppState, c: &auth::Claims, id: &str) -> ApiResult<ReportRow> {
+    let r = load_report(st, parse_id(id)?).await?;
+    if r.student_id != c.sub {
+        return Err(ApiError::Forbidden("Só podes alterar os teus relatos.".into()));
+    }
+    Ok(r)
+}
+
+/// PUT /v1/reports/{id}: JSON {text?, islandId?}. Só o autor.
+pub async fn update_report(
+    State(st): State<AppState>,
+    Student(c): Student,
+    Path(id): Path<String>,
+    body: Option<Json<EditReport>>,
+) -> ApiResult<Json<Value>> {
+    let Json(e) = body.ok_or_else(|| ApiError::BadRequest("Envia JSON com text e/ou islandId.".into()))?;
+    let r = own_report(&st, &c, &id).await?;
+    if e.text.is_none() && e.island_id.is_none() {
+        return Err(ApiError::BadRequest("Nada para alterar: envia text e/ou islandId.".into()));
+    }
+    let text = match &e.text {
+        Some(t) => clean_text(t)?,
+        None => r.text.clone(),
+    };
+    let island_id = match &e.island_id {
+        Some(i) => find_island(i)?.id.to_string(),
+        None => r.island_id.clone(),
+    };
+    sqlx::query("UPDATE reports SET text = $1, island_id = $2, updated_at = now() WHERE id = $3")
+        .bind(&text)
+        .bind(&island_id)
+        .bind(r.id)
+        .execute(&st.db)
+        .await?;
+    Ok(Json(report_json(&st, &load_report(&st, r.id).await?, c.sub)))
+}
+
+/// PUT /v1/reports/{id}/photo: multipart/form-data com o campo photo. Substitui a fotografia.
+pub async fn put_photo(
+    State(st): State<AppState>,
+    Student(c): Student,
+    Path(id): Path<String>,
+    mut mp: Multipart,
+) -> ApiResult<Json<Value>> {
+    let r = own_report(&st, &c, &id).await?;
+    let mut bytes = None;
+    while let Some(field) = mp.next_field().await.map_err(|e| ApiError::BadRequest(e.body_text()))? {
+        if field.name() == Some("photo") {
+            bytes = Some(field.bytes().await.map_err(|e| ApiError::BadRequest(e.body_text()))?.to_vec());
+        }
+    }
+    let bytes = bytes.filter(|b| !b.is_empty()).ok_or_else(|| ApiError::BadRequest("Falta o campo photo.".into()))?;
+    let name = save_photo(&st, &bytes).await?;
+    sqlx::query("UPDATE reports SET photo = $1, updated_at = now() WHERE id = $2").bind(&name).bind(r.id).execute(&st.db).await?;
+    remove_photo(&st, &r.photo).await;
+    Ok(Json(report_json(&st, &load_report(&st, r.id).await?, c.sub)))
+}
+
+/// DELETE /v1/reports/{id}. Só o autor.
+pub async fn delete_report(State(st): State<AppState>, Student(c): Student, Path(id): Path<String>) -> ApiResult<StatusCode> {
+    let r = own_report(&st, &c, &id).await?;
+    sqlx::query("DELETE FROM reports WHERE id = $1").bind(r.id).execute(&st.db).await?;
+    remove_photo(&st, &r.photo).await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------- docente ----------
+
+#[derive(Deserialize)]
+pub struct NewStudent {
+    name: String,
+    github: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Credentials {
+    name: String,
+    github: Option<String>,
+    client_id: String,
+    client_secret: String,
+}
+
+pub async fn admin_create_student(State(st): State<AppState>, _a: Admin, Json(n): Json<NewStudent>) -> ApiResult<(StatusCode, Json<Credentials>)> {
+    let name = n.name.trim().to_string();
+    if name.is_empty() {
+        return Err(ApiError::BadRequest("Falta o nome.".into()));
+    }
+    let client_id = format!("pdm-{}", auth::random_token(6));
+    let secret = auth::random_token(24);
+    sqlx::query("INSERT INTO students (id, client_id, secret_hash, name, github) VALUES ($1, $2, $3, $4, $5)")
+        .bind(Uuid::new_v4())
+        .bind(&client_id)
+        .bind(auth::hash_secret(&secret)?)
+        .bind(&name)
+        .bind(&n.github)
+        .execute(&st.db)
+        .await?;
+    Ok((StatusCode::CREATED, Json(Credentials { name, github: n.github, client_id, client_secret: secret })))
+}
+
+pub async fn admin_reset_secret(State(st): State<AppState>, _a: Admin, Path(client_id): Path<String>) -> ApiResult<Json<Credentials>> {
+    let secret = auth::random_token(24);
+    let row: Option<(String, Option<String>)> =
+        sqlx::query_as("UPDATE students SET secret_hash = $1 WHERE client_id = $2 RETURNING name, github")
+            .bind(auth::hash_secret(&secret)?)
+            .bind(&client_id)
+            .fetch_optional(&st.db)
+            .await?;
+    let (name, github) = row.ok_or_else(|| ApiError::NotFound("Esse aluno não existe.".into()))?;
+    Ok(Json(Credentials { name, github, client_id, client_secret: secret }))
+}
+
+pub async fn admin_students(State(st): State<AppState>, _a: Admin) -> ApiResult<Json<Value>> {
+    let rows: Vec<(String, String, Option<String>, Option<OffsetDateTime>, i64)> = sqlx::query_as(
+        "SELECT s.client_id, s.name, s.github, s.last_seen, count(r.id)
+         FROM students s LEFT JOIN reports r ON r.student_id = s.id
+         GROUP BY s.id ORDER BY s.name",
+    )
+    .fetch_all(&st.db)
+    .await?;
+    Ok(Json(Value::Array(
+        rows.into_iter()
+            .map(|(client_id, name, github, last_seen, reports)| {
+                json!({ "clientId": client_id, "name": name, "github": github, "lastSeen": last_seen.map(ts), "reports": reports })
+            })
+            .collect(),
+    )))
+}
+
+pub async fn admin_delete_report(State(st): State<AppState>, _a: Admin, Path(id): Path<String>) -> ApiResult<StatusCode> {
+    let r = load_report(&st, parse_id(&id)?).await?;
+    sqlx::query("DELETE FROM reports WHERE id = $1").bind(r.id).execute(&st.db).await?;
+    remove_photo(&st, &r.photo).await;
+    Ok(StatusCode::NO_CONTENT)
+}

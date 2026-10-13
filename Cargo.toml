@@ -1,0 +1,28 @@
+[package]
+name = "pdm-api"
+version = "1.0.0"
+edition = "2024"
+description = "API Tempo Açores da UC de PDM (DAW 2, 2026/27): ilhas, trilhos, previsão do IPMA e relatos dos alunos"
+
+[dependencies]
+anyhow = "1"
+argon2 = "0.5"
+axum = { version = "0.8", features = ["multipart", "macros"] }
+dotenvy = "0.15"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+jsonwebtoken = "9.3"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "macros", "migrate", "uuid", "time"] }
+thiserror = "2"
+time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "limit", "cors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[profile.release]
+strip = true
