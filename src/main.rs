@@ -87,6 +87,7 @@ async fn main() -> anyhow::Result<()> {
 
     let admin = Router::new()
         .route("/students", get(routes::admin_students).post(routes::admin_create_student))
+        .route("/students/{client_id}", delete(routes::admin_delete_student))
         .route("/students/{client_id}/reset-secret", post(routes::admin_reset_secret))
         .route("/reports/{id}", delete(routes::admin_delete_report));
 

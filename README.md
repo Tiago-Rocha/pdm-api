@@ -16,6 +16,7 @@ Rotas em `/admin`, com o header `X-Admin-Key`:
 - `POST /admin/students` com `{"name": "...", "github": "..."}`: cria um aluno e devolve o `clientId` e o `clientSecret` (o segredo só aparece aqui).
 - `GET /admin/students`: alunos, último acesso e número de relatos.
 - `POST /admin/students/{clientId}/reset-secret`: gera um segredo novo.
+- `DELETE /admin/students/{clientId}`: apaga um aluno e os seus relatos.
 - `DELETE /admin/reports/{id}`: apaga qualquer relato.
 
 ## Deploy

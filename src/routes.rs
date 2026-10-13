@@ -441,3 +441,20 @@ pub async fn admin_delete_report(State(st): State<AppState>, _a: Admin, Path(id)
     remove_photo(&st, &r.photo).await;
     Ok(StatusCode::NO_CONTENT)
 }
+
+pub async fn admin_delete_student(State(st): State<AppState>, _a: Admin, Path(client_id): Path<String>) -> ApiResult<StatusCode> {
+    let photos: Vec<(Option<String>,)> = sqlx::query_as(
+        "SELECT r.photo FROM reports r JOIN students s ON s.id = r.student_id WHERE s.client_id = $1",
+    )
+    .bind(&client_id)
+    .fetch_all(&st.db)
+    .await?;
+    let done = sqlx::query("DELETE FROM students WHERE client_id = $1").bind(&client_id).execute(&st.db).await?;
+    if done.rows_affected() == 0 {
+        return Err(ApiError::NotFound("Esse aluno não existe.".into()));
+    }
+    for (p,) in photos {
+        remove_photo(&st, &p).await;
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
