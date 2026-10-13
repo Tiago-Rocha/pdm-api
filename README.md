@@ -2,6 +2,8 @@
 
 API da UC de PDM (CTeSP DAW, ESTA, Universidade dos Açores, 2026/27), para a app Flutter dos alunos.
 
+Em produção em **https://api-pdm.sublimecipher.com** (documentação em `/docs`). O endereço antigo `pdm.188-245-31-95.sslip.io` reencaminha para lá; a rede da escola bloqueia o sslip.io.
+
 - Ilhas e trilhos dos Açores, e a previsão a 5 dias do IPMA (dados abertos, com cache de 30 minutos).
 - Relatos da turma: texto e fotografia sobre o tempo numa ilha, para exercitar POST, PUT e DELETE.
 - Autenticação por aluno: `clientId` e `clientSecret` trocados por um JWT em `POST /v1/auth/token`.
