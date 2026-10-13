@@ -1,5 +1,5 @@
 //! Registo de uso: um evento por pedido, com o aluno que o fez.
-//! Vai para a tabela request_log e, se houver DD_API_KEY, para o Datadog (logs, região UE).
+//! Vai para a tabela request_log e, se configurados, para o OpenObserve (O2_*) e para o Datadog (DD_API_KEY).
 use std::time::{Duration, Instant};
 
 use axum::extract::{Request, State};
@@ -85,8 +85,16 @@ pub async fn track(State(st): State<AppState>, req: Request, next: Next) -> Resp
     res
 }
 
-/// Tarefa de fundo: junta os eventos em lotes e grava-os na base de dados e no Datadog.
-pub fn spawn(db: PgPool, http: reqwest::Client, dd_api_key: Option<String>, dd_site: String) -> Sender {
+/// Destino OpenObserve: URL de ingestão JSON de uma stream e credenciais.
+#[derive(Clone)]
+pub struct OpenObserve {
+    pub url: String,
+    pub user: String,
+    pub password: String,
+}
+
+/// Tarefa de fundo: junta os eventos em lotes e grava-os na base de dados, no OpenObserve e no Datadog.
+pub fn spawn(db: PgPool, http: reqwest::Client, dd_api_key: Option<String>, dd_site: String, o2: Option<OpenObserve>) -> Sender {
     let (tx, mut rx) = mpsc::unbounded_channel::<Event>();
     tokio::spawn(async move {
         let host = std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()).unwrap_or_else(|_| "pdm-api".into());
@@ -103,6 +111,9 @@ pub fn spawn(db: PgPool, http: reqwest::Client, dd_api_key: Option<String>, dd_s
                 }
             }
             save(&db, &batch).await;
+            if let Some(o2) = &o2 {
+                send_openobserve(&http, o2, &batch).await;
+            }
             if let Some(key) = &dd_api_key {
                 send_datadog(&http, key, &dd_site, &host, &batch).await;
             }
@@ -166,5 +177,34 @@ async fn send_datadog(http: &reqwest::Client, key: &str, site: &str, host: &str,
         Ok(r) if r.status().is_success() => {}
         Ok(r) => tracing::warn!("Datadog respondeu {}", r.status()),
         Err(err) => tracing::warn!("Datadog falhou: {err}"),
+    }
+}
+
+async fn send_openobserve(http: &reqwest::Client, o2: &OpenObserve, batch: &[Event]) {
+    let records: Vec<_> = batch
+        .iter()
+        .map(|e| {
+            json!({
+                "_timestamp": e.at.unix_timestamp_nanos() / 1000, // microssegundos
+                "level": if e.status >= 500 { "error" } else if e.status >= 400 { "warn" } else { "info" },
+                "message": format!("{} {} {} {}ms {}", e.method, e.path, e.status, e.duration.as_millis(),
+                                   e.name.as_deref().unwrap_or("(sem token)")),
+                "client_id": e.client_id.as_deref().unwrap_or("anonimo"),
+                "name": e.name,
+                "event": e.event,
+                "method": e.method,
+                "path": e.path,
+                "route": e.path.split('?').next().unwrap_or(""),
+                "status": e.status,
+                "duration_ms": e.duration.as_millis() as u64,
+                "ip": e.ip,
+                "user_agent": e.user_agent,
+            })
+        })
+        .collect();
+    match http.post(&o2.url).basic_auth(&o2.user, Some(&o2.password)).json(&records).send().await {
+        Ok(r) if r.status().is_success() => {}
+        Ok(r) => tracing::warn!("OpenObserve respondeu {}", r.status()),
+        Err(err) => tracing::warn!("OpenObserve falhou: {err}"),
     }
 }

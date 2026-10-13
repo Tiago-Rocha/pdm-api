@@ -71,11 +71,16 @@ async fn main() -> anyhow::Result<()> {
     if dd_api_key.is_none() {
         tracing::warn!("sem DD_API_KEY: o registo de uso só vai para a base de dados");
     }
+    let o2 = match (std::env::var("O2_URL"), std::env::var("O2_USER"), std::env::var("O2_PASSWORD")) {
+        (Ok(url), Ok(user), Ok(password)) if !url.is_empty() => Some(usage::OpenObserve { url, user, password }),
+        _ => None,
+    };
     let usage = usage::spawn(
         db.clone(),
         http.clone(),
         dd_api_key,
         std::env::var("DD_SITE").unwrap_or_else(|_| "datadoghq.eu".into()),
+        o2,
     );
     let state = AppState {
         db,

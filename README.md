@@ -24,7 +24,7 @@ Rotas em `/admin`, com o header `X-Admin-Key`:
 
 ## Registo de uso
 
-Cada pedido (menos `/health`) fica na tabela `request_log` com o aluno, o método, o caminho, o código, o tempo, o IP e o user agent. Se `DD_API_KEY` estiver definida em `/etc/pdm-api.env`, os mesmos eventos vão para os logs do Datadog (`DD_SITE`, por defeito `datadoghq.eu`), com `service:pdm-api` e as tags `client_id:...` e `event:login|login_failed`.
+Cada pedido (menos `/health`) fica na tabela `request_log` com o aluno, o método, o caminho, o código, o tempo, o IP e o user agent. Se `O2_URL`, `O2_USER` e `O2_PASSWORD` estiverem definidas, os mesmos eventos vão para o OpenObserve (`O2_URL` é o endpoint `_json` de uma stream, por exemplo `http://127.0.0.1:5080/api/default/pdm-api/_json`). Se `DD_API_KEY` estiver definida em `/etc/pdm-api.env`, vão também para os logs do Datadog (`DD_SITE`, por defeito `datadoghq.eu`), com `service:pdm-api` e as tags `client_id:...` e `event:login|login_failed`.
 
 ## Deploy
 
