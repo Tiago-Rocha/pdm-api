@@ -70,6 +70,20 @@ fn island_json(st: &AppState, i: &data::Island) -> Value {
 }
 
 fn trail_json(st: &AppState, t: &data::Trail) -> Value {
+    let mut v = trail_json_ok(st, t);
+    if bugs_on(st) {
+        match t.id {
+            "capelinhos" => {
+                v.as_object_mut().map(|o| o.remove("islandId"));
+            }
+            "lagoa-do-fogo" => v["distanceKm"] = json!("10,5 km"),
+            _ => {}
+        }
+    }
+    v
+}
+
+fn trail_json_ok(st: &AppState, t: &data::Trail) -> Value {
     let island = data::island(t.island_id).expect("trilho com ilha válida");
     json!({
         "id": t.id,
@@ -89,8 +103,19 @@ fn find_island(id: &str) -> ApiResult<&'static data::Island> {
     data::island(id).ok_or_else(|| ApiError::NotFound(format!("Não há nenhuma ilha com o id \"{id}\".")))
 }
 
+fn bugs_on(st: &AppState) -> bool {
+    st.bugs.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 pub async fn islands(State(st): State<AppState>, _s: Student) -> Json<Value> {
-    Json(Value::Array(ISLANDS.iter().map(|i| island_json(&st, i)).collect()))
+    let bugs = bugs_on(&st);
+    Json(Value::Array(
+        ISLANDS
+            .iter()
+            .filter(|i| !(bugs && i.id == "graciosa"))
+            .map(|i| island_json(&st, i))
+            .collect(),
+    ))
 }
 
 pub async fn island(State(st): State<AppState>, _s: Student, Path(id): Path<String>) -> ApiResult<Json<Value>> {
@@ -100,13 +125,19 @@ pub async fn island(State(st): State<AppState>, _s: Student, Path(id): Path<Stri
 pub async fn forecast(State(st): State<AppState>, _s: Student, Path(id): Path<String>) -> ApiResult<Json<Value>> {
     let i = find_island(&id)?;
     let f = st.ipma.forecast(&st.http, i.ipma_id).await?;
+    let mut days = json!(f.days);
+    if bugs_on(&st) && i.id == "pico" {
+        if let Some(day) = days.get_mut(2) {
+            day["weatherType"]["category"] = json!("fog");
+        }
+    }
     Ok(Json(json!({
         "islandId": i.id,
         "islandName": i.name,
         "location": i.ipma_local,
         "source": "IPMA",
         "updatedAt": f.updated_at,
-        "days": f.days,
+        "days": days,
     })))
 }
 
@@ -509,4 +540,21 @@ pub async fn admin_usage(State(st): State<AppState>, _a: Admin) -> ApiResult<Jso
             })
             .collect(),
     )))
+}
+
+// ---------- exercício de aula: erros de propósito ----------
+
+#[derive(Deserialize)]
+pub struct Bugs {
+    enabled: bool,
+}
+
+pub async fn admin_bugs(State(st): State<AppState>, _a: Admin) -> Json<Value> {
+    Json(json!({ "enabled": bugs_on(&st) }))
+}
+
+pub async fn admin_set_bugs(State(st): State<AppState>, _a: Admin, Json(b): Json<Bugs>) -> Json<Value> {
+    st.bugs.store(b.enabled, std::sync::atomic::Ordering::Relaxed);
+    tracing::info!("exercício de erros: {}", if b.enabled { "ligado" } else { "desligado" });
+    Json(json!({ "enabled": b.enabled }))
 }

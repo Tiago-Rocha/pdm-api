@@ -39,6 +39,8 @@ pub struct AppState {
     pub public_url: Arc<String>,
     /// registo de uso (base de dados e Datadog)
     pub usage: usage::Sender,
+    /// exercício de aula: erros de propósito nas respostas, ligados em /admin/bugs
+    pub bugs: Arc<std::sync::atomic::AtomicBool>,
 }
 
 const OPENAPI: &str = include_str!("openapi.json");
@@ -86,6 +88,7 @@ async fn main() -> anyhow::Result<()> {
         db,
         http,
         usage,
+        bugs: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         ipma: Arc::new(ipma::Cache::default()),
         jwt_secret: Arc::new(var("JWT_SECRET")?.into_bytes()),
         admin_key: Arc::new(var("ADMIN_KEY")?),
@@ -110,7 +113,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/students/{client_id}", delete(routes::admin_delete_student))
         .route("/students/{client_id}/reset-secret", post(routes::admin_reset_secret))
         .route("/reports/{id}", delete(routes::admin_delete_report))
-        .route("/usage", get(routes::admin_usage));
+        .route("/usage", get(routes::admin_usage))
+        .route("/bugs", get(routes::admin_bugs).put(routes::admin_set_bugs));
 
     let app = Router::new()
         .route("/", get(|| async { Redirect::temporary("/docs") }))
