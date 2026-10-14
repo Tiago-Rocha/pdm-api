@@ -58,6 +58,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "bad_request",
+          "message": "Envia JSON com clientId e clientSecret, e o header Content-Type: application/json."
+         }
         }
        }
       }
@@ -68,6 +74,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "clientId ou clientSecret errados."
+         }
         }
        }
       }
@@ -103,6 +115,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
         }
        }
       }
@@ -141,6 +159,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
         }
        }
       }
@@ -188,6 +212,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
         }
        }
       }
@@ -198,6 +228,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Não há nenhuma ilha com o id \"atlantida\"."
+         }
         }
        }
       }
@@ -245,6 +281,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
         }
        }
       }
@@ -255,6 +297,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Não há nenhuma ilha com o id \"atlantida\"."
+         }
         }
        }
       }
@@ -265,6 +313,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "upstream_error",
+          "message": "O IPMA não respondeu. Tenta daqui a pouco."
+         }
         }
        }
       }
@@ -314,6 +368,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
         }
        }
       }
@@ -324,6 +384,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Não há nenhuma ilha com o id \"atlantida\"."
+         }
         }
        }
       }
@@ -371,6 +437,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
         }
        }
       }
@@ -381,6 +453,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Não há nenhum trilho com o id \"atlantida\"."
+         }
         }
        }
       }
@@ -441,6 +519,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
         }
        }
       }
@@ -451,6 +535,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Não há nenhuma ilha com o id \"atlantida\"."
+         }
         }
        }
       }
@@ -518,6 +608,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "bad_request",
+          "message": "O texto do relato não pode estar vazio."
+         }
         }
        }
       }
@@ -528,6 +624,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
         }
        }
       }
@@ -538,6 +640,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Não há nenhuma ilha com o id \"atlantida\"."
+         }
         }
        }
       }
@@ -595,6 +703,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
         }
        }
       }
@@ -605,6 +719,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Esse relato não existe."
+         }
         }
        }
       }
@@ -660,6 +780,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "bad_request",
+          "message": "O texto do relato não pode estar vazio."
+         }
         }
        }
       }
@@ -670,6 +796,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
         }
        }
       }
@@ -680,6 +812,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "forbidden",
+          "message": "Só podes alterar os teus relatos."
+         }
         }
        }
       }
@@ -690,6 +828,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Esse relato não existe."
+         }
         }
        }
       }
@@ -728,6 +872,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
         }
        }
       }
@@ -738,6 +888,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "forbidden",
+          "message": "Só podes alterar os teus relatos."
+         }
         }
        }
       }
@@ -748,6 +904,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Esse relato não existe."
+         }
         }
        }
       }
@@ -814,6 +976,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "bad_request",
+          "message": "O texto do relato não pode estar vazio."
+         }
         }
        }
       }
@@ -824,6 +992,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
         }
        }
       }
@@ -834,6 +1008,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "forbidden",
+          "message": "Só podes alterar os teus relatos."
+         }
         }
        }
       }
@@ -844,6 +1024,12 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Esse relato não existe."
+         }
         }
        }
       }
@@ -879,15 +1065,23 @@
       "properties": {
        "code": {
         "type": "string",
-        "example": "not_found"
+        "example": "not_found",
+        "description": "bad_request, unauthorized, forbidden, not_found, too_large, upstream_error ou internal_error"
        },
        "message": {
         "type": "string",
         "example": "Esse relato não existe."
        }
-      }
+      },
+      "required": [
+       "code",
+       "message"
+      ]
      }
-    }
+    },
+    "required": [
+     "error"
+    ]
    },
    "TokenRequest": {
     "type": "object",
@@ -920,7 +1114,12 @@
       "type": "integer",
       "example": 3600
      }
-    }
+    },
+    "required": [
+     "accessToken",
+     "tokenType",
+     "expiresIn"
+    ]
    },
    "Me": {
     "type": "object",
@@ -935,27 +1134,39 @@
       "type": "integer",
       "description": "Unix timestamp"
      }
-    }
+    },
+    "required": [
+     "clientId",
+     "name",
+     "tokenExpiresAt"
+    ]
    },
    "Island": {
     "type": "object",
     "properties": {
      "id": {
       "type": "string",
-      "example": "pico"
+      "example": "sao-miguel"
      },
      "name": {
       "type": "string",
-      "example": "Pico"
+      "example": "São Miguel"
      },
      "imageUrl": {
-      "type": "string"
+      "type": "string",
+      "example": "https://api-pdm.sublimecipher.com/static/islands/sao_miguel.jpg"
      },
      "trailCount": {
       "type": "integer",
-      "example": 1
+      "example": 3
      }
-    }
+    },
+    "required": [
+     "id",
+     "name",
+     "imageUrl",
+     "trailCount"
+    ]
    },
    "Trail": {
     "type": "object",
@@ -999,16 +1210,30 @@
      "description": {
       "type": "string"
      }
-    }
+    },
+    "required": [
+     "id",
+     "name",
+     "islandId",
+     "islandName",
+     "imageUrl",
+     "distanceKm",
+     "duration",
+     "difficulty",
+     "difficultyLabel",
+     "description"
+    ]
    },
    "Forecast": {
     "type": "object",
     "properties": {
      "islandId": {
-      "type": "string"
+      "type": "string",
+      "example": "sao-miguel"
      },
      "islandName": {
-      "type": "string"
+      "type": "string",
+      "example": "São Miguel"
      },
      "location": {
       "type": "string",
@@ -1019,7 +1244,9 @@
       "example": "IPMA"
      },
      "updatedAt": {
-      "type": "string"
+      "type": "string",
+      "example": "2026-10-14T13:31:02",
+      "description": "Hora local dos Açores em que a API foi buscar a previsão ao IPMA."
      },
      "days": {
       "type": "array",
@@ -1027,7 +1254,15 @@
        "$ref": "#/components/schemas/Day"
       }
      }
-    }
+    },
+    "required": [
+     "islandId",
+     "islandName",
+     "location",
+     "source",
+     "updatedAt",
+     "days"
+    ]
    },
    "Day": {
     "type": "object",
@@ -1056,9 +1291,15 @@
          "cloudy",
          "rain",
          "storm"
-        ]
+        ],
+        "example": "partlyCloudy"
        }
-      }
+      },
+      "required": [
+       "id",
+       "description",
+       "category"
+      ]
      },
      "tMin": {
       "type": "number",
@@ -1087,9 +1328,22 @@
         "type": "string",
         "example": "Moderado"
        }
-      }
+      },
+      "required": [
+       "direction",
+       "class",
+       "description"
+      ]
      }
-    }
+    },
+    "required": [
+     "date",
+     "weatherType",
+     "tMin",
+     "tMax",
+     "rainChance",
+     "wind"
+    ]
    },
    "NewReport": {
     "type": "object",
@@ -1150,7 +1404,11 @@
        "name": {
         "type": "string"
        }
-      }
+      },
+      "required": [
+       "clientId",
+       "name"
+      ]
      },
      "mine": {
       "type": "boolean",
@@ -1164,7 +1422,18 @@
       "type": "string",
       "format": "date-time"
      }
-    }
+    },
+    "required": [
+     "id",
+     "islandId",
+     "islandName",
+     "text",
+     "photoUrl",
+     "author",
+     "mine",
+     "createdAt",
+     "updatedAt"
+    ]
    }
   }
  }
