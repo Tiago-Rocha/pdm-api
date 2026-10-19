@@ -42,6 +42,9 @@ pub struct Player {
     solved: bool,
     /// no jogo de construir a app em conjunto, a parte que calhou a este aluno
     part: String,
+    /// pergunta de escolha múltipla depois do exercício: só conta a primeira resposta
+    #[serde(skip_serializing_if = "Option::is_none")]
+    quiz: Option<bool>,
     /// segundos desde a última jogada deste aluno
     #[serde(skip)]
     seen: Option<Instant>,
@@ -67,6 +70,8 @@ pub struct Move {
     /// partes possíveis: a primeira jogada recebe a que tem menos alunos
     #[serde(default)]
     parts: Vec<String>,
+    #[serde(default)]
+    quiz: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -126,7 +131,7 @@ impl Store {
         };
         let p = board.players.entry(player.clone()).or_insert(Player {
             name: String::new(), team: String::new(), right: 0, total: 0, tries: 0, ms: 0, solved: false,
-            part: String::new(), seen: None, idle: 0,
+            part: String::new(), quiz: None, seen: None, idle: 0,
         });
         if let Some(part) = new_part {
             // parte nova, jogo novo: o progresso que vinha de outra parte não conta
@@ -136,6 +141,7 @@ impl Store {
             p.ms = 0;
             p.solved = false;
             p.total = 0;
+            p.quiz = None;
         } else if !p.solved {
             // depois de resolvido, o resultado não muda (um "Baralhar" não apaga a vitória)
             p.right = m.right;
@@ -143,6 +149,9 @@ impl Store {
             p.ms = m.ms;
             p.total = m.total;
             p.solved = m.solved && m.total > 0 && m.right == m.total;
+        }
+        if p.quiz.is_none() && p.solved {
+            p.quiz = m.quiz;
         }
         p.name = name;
         p.team = team;
@@ -184,7 +193,7 @@ mod tests {
     fn mv(player: &str, right: u32, total: u32, solved: bool, parts: &[&str]) -> Move {
         Move {
             player: player.into(), name: format!("N{player}"), team: "1".into(), right, total, tries: 1, ms: 1000, solved,
-            parts: parts.iter().map(|s| s.to_string()).collect(),
+            parts: parts.iter().map(|s| s.to_string()).collect(), quiz: None,
         }
     }
 
@@ -214,5 +223,12 @@ mod tests {
         assert!(after.solved);
         assert_eq!(after.right, 5);
         assert!(s.apply("r/p", mv("a", 6, 5, false, &[]), now).is_err());
+        // a primeira resposta à pergunta fica; as seguintes não mudam nada
+        let mut m = mv("a", 5, 5, true, &[]);
+        m.quiz = Some(false);
+        s.apply("r/p", m, now).unwrap();
+        let mut m = mv("a", 5, 5, true, &[]);
+        m.quiz = Some(true);
+        assert_eq!(s.apply("r/p", m, now).unwrap().you.unwrap().quiz, Some(false));
     }
 }
