@@ -111,6 +111,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/reports", get(routes::list_reports).post(routes::create_report))
         .route("/reports/{id}", get(routes::get_report).put(routes::update_report).delete(routes::delete_report))
         .route("/reports/{id}/photo", put(routes::put_photo))
+        .route("/play/{room}", get(play::get_room))
         .route("/play/{room}/{puzzle}", get(play::get_board).post(play::post_move));
 
     let admin = Router::new()

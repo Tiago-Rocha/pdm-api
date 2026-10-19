@@ -45,6 +45,8 @@ pub struct Player {
     /// pergunta de escolha múltipla depois do exercício: só conta a primeira resposta
     #[serde(skip_serializing_if = "Option::is_none")]
     quiz: Option<bool>,
+    /// o aluno carregou em "Pedir ajuda" (fica até voltar a carregar)
+    help: bool,
     /// segundos desde a última jogada deste aluno
     #[serde(skip)]
     seen: Option<Instant>,
@@ -72,6 +74,8 @@ pub struct Move {
     parts: Vec<String>,
     #[serde(default)]
     quiz: Option<bool>,
+    #[serde(default)]
+    help: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -131,7 +135,7 @@ impl Store {
         };
         let p = board.players.entry(player.clone()).or_insert(Player {
             name: String::new(), team: String::new(), right: 0, total: 0, tries: 0, ms: 0, solved: false,
-            part: String::new(), quiz: None, seen: None, idle: 0,
+            part: String::new(), quiz: None, help: false, seen: None, idle: 0,
         });
         if let Some(part) = new_part {
             // parte nova, jogo novo: o progresso que vinha de outra parte não conta
@@ -152,6 +156,12 @@ impl Store {
         }
         if p.quiz.is_none() && p.solved {
             p.quiz = m.quiz;
+        }
+        if let Some(h) = m.help {
+            p.help = h;
+        }
+        if p.solved {
+            p.help = false;
         }
         p.name = name;
         p.team = team;
@@ -176,6 +186,29 @@ pub async fn get_board(
     }))
 }
 
+#[derive(Serialize)]
+pub struct Room {
+    /// exercício: alunos desse exercício
+    puzzles: HashMap<String, Vec<Player>>,
+}
+
+/// Painel do professor: todos os exercícios de uma sala de uma vez.
+pub async fn get_room(State(st): State<AppState>, Path(room): Path<String>) -> Result<Json<Room>, ApiError> {
+    Ok(Json(st.play.room(&room, Instant::now())?))
+}
+
+impl Store {
+    fn room(&self, room: &str, now: Instant) -> Result<Room, ApiError> {
+        let prefix = key(room, "x")?.trim_end_matches('x').to_string();
+        let boards = self.boards.lock().unwrap();
+        let puzzles = boards
+            .iter()
+            .filter_map(|(k, b)| k.strip_prefix(&prefix).map(|p| (p.to_string(), snapshot(b, now).players)))
+            .collect();
+        Ok(Room { puzzles })
+    }
+}
+
 fn snapshot(b: &Board, now: Instant) -> Scoreboard {
     let mut players: Vec<Player> = b
         .players
@@ -193,7 +226,7 @@ mod tests {
     fn mv(player: &str, right: u32, total: u32, solved: bool, parts: &[&str]) -> Move {
         Move {
             player: player.into(), name: format!("N{player}"), team: "1".into(), right, total, tries: 1, ms: 1000, solved,
-            parts: parts.iter().map(|s| s.to_string()).collect(), quiz: None,
+            parts: parts.iter().map(|s| s.to_string()).collect(), quiz: None, help: None,
         }
     }
 
@@ -230,5 +263,22 @@ mod tests {
         let mut m = mv("a", 5, 5, true, &[]);
         m.quiz = Some(true);
         assert_eq!(s.apply("r/p", m, now).unwrap().you.unwrap().quiz, Some(false));
+    }
+
+    #[test]
+    fn help_and_room() {
+        let s = Store::default();
+        let now = Instant::now();
+        let mut m = mv("a", 1, 5, false, &[]);
+        m.help = Some(true);
+        assert!(s.apply("r/e1", m, now).unwrap().you.unwrap().help);
+        s.apply("r/e2", mv("a", 5, 5, true, &[]), now).unwrap();
+        s.apply("outra/e1", mv("b", 0, 5, false, &[]), now).unwrap();
+        let room = s.room("r", now).unwrap();
+        assert_eq!(room.puzzles.len(), 2);
+        assert!(room.puzzles["e1"][0].help);
+        // resolver tira o pedido de ajuda
+        s.apply("r/e1", mv("a", 5, 5, true, &[]), now).unwrap();
+        assert!(!s.room("r", now).unwrap().puzzles["e1"][0].help);
     }
 }
