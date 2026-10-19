@@ -6,6 +6,7 @@ mod auth;
 mod data;
 mod error;
 mod ipma;
+mod play;
 mod routes;
 mod usage;
 
@@ -41,6 +42,8 @@ pub struct AppState {
     pub usage: usage::Sender,
     /// exercício de aula: erros de propósito nas respostas, ligados em /admin/bugs
     pub bugs: Arc<std::sync::atomic::AtomicBool>,
+    /// placar ao vivo dos exercícios de ordenar código, em memória
+    pub play: play::Shared,
 }
 
 const OPENAPI: &str = include_str!("openapi.json");
@@ -89,6 +92,7 @@ async fn main() -> anyhow::Result<()> {
         http,
         usage,
         bugs: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        play: Arc::new(play::Store::default()),
         ipma: Arc::new(ipma::Cache::default()),
         jwt_secret: Arc::new(var("JWT_SECRET")?.into_bytes()),
         admin_key: Arc::new(var("ADMIN_KEY")?),
@@ -106,7 +110,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/trails/{id}", get(routes::trail))
         .route("/reports", get(routes::list_reports).post(routes::create_report))
         .route("/reports/{id}", get(routes::get_report).put(routes::update_report).delete(routes::delete_report))
-        .route("/reports/{id}/photo", put(routes::put_photo));
+        .route("/reports/{id}/photo", put(routes::put_photo))
+        .route("/play/{room}/{puzzle}", get(play::get_board).post(play::post_move));
 
     let admin = Router::new()
         .route("/students", get(routes::admin_students).post(routes::admin_create_student))

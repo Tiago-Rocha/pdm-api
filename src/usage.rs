@@ -44,8 +44,8 @@ fn header_str(req: &Request, name: &str) -> Option<String> {
 /// Middleware: mede cada pedido e envia um evento para o registo.
 pub async fn track(State(st): State<AppState>, req: Request, next: Next) -> Response {
     let path = req.uri().path().to_string();
-    // /health e as imagens (carregadas sem token) ficam fora do registo
-    if path == "/health" || path.starts_with("/static/") || path.starts_with("/media/") {
+    // /health, as imagens (carregadas sem token) e o placar dos slides (um pedido por segundo) ficam fora do registo
+    if path == "/health" || path.starts_with("/static/") || path.starts_with("/media/") || path.starts_with("/v1/play/") {
         return next.run(req).await;
     }
     let started = Instant::now();
