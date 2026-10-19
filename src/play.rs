@@ -33,6 +33,8 @@ struct Board {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Player {
+    /// o identificador aleatório que o browser do aluno gera (não é pessoal)
+    id: String,
     name: String,
     team: String,
     right: u32,
@@ -134,7 +136,7 @@ impl Store {
             None
         };
         let p = board.players.entry(player.clone()).or_insert(Player {
-            name: String::new(), team: String::new(), right: 0, total: 0, tries: 0, ms: 0, solved: false,
+            id: player.clone(), name: String::new(), team: String::new(), right: 0, total: 0, tries: 0, ms: 0, solved: false,
             part: String::new(), quiz: None, help: false, seen: None, idle: 0,
         });
         if let Some(part) = new_part {
