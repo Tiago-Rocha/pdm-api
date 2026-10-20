@@ -49,6 +49,11 @@ pub struct Player {
     quiz: Option<bool>,
     /// o aluno carregou em "Pedir ajuda" (fica até voltar a carregar)
     help: bool,
+    /// votações e cartões: a primeira escolha (fica) e a última (a segunda votação)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    first: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last: Option<Vec<u8>>,
     /// segundos desde a última jogada deste aluno
     #[serde(skip)]
     seen: Option<Instant>,
@@ -78,6 +83,9 @@ pub struct Move {
     quiz: Option<bool>,
     #[serde(default)]
     help: Option<bool>,
+    /// a opção escolhida numa votação, ou a coluna de cada cartão
+    #[serde(default)]
+    pick: Option<Vec<u8>>,
 }
 
 #[derive(Serialize)]
@@ -112,7 +120,8 @@ impl Store {
         let name = clean(&m.name, 24);
         let team = clean(&m.team, 24);
         let player = clean(&m.player, 40);
-        if name.is_empty() || player.is_empty() || m.total > 200 || m.right > m.total {
+        let bad_pick = m.pick.as_ref().is_some_and(|p| p.len() > 40 || p.iter().any(|&x| x > 20));
+        if name.is_empty() || player.is_empty() || m.total > 200 || m.right > m.total || bad_pick {
             return Err(ApiError::BadRequest("Faltam o nome ou o jogador, ou os números não batem certo.".into()));
         }
         let mut boards = self.boards.lock().unwrap();
@@ -137,7 +146,7 @@ impl Store {
         };
         let p = board.players.entry(player.clone()).or_insert(Player {
             id: player.clone(), name: String::new(), team: String::new(), right: 0, total: 0, tries: 0, ms: 0, solved: false,
-            part: String::new(), quiz: None, help: false, seen: None, idle: 0,
+            part: String::new(), quiz: None, help: false, first: None, last: None, seen: None, idle: 0,
         });
         if let Some(part) = new_part {
             // parte nova, jogo novo: o progresso que vinha de outra parte não conta
@@ -158,6 +167,10 @@ impl Store {
         }
         if p.quiz.is_none() && p.solved {
             p.quiz = m.quiz;
+        }
+        if let Some(pick) = m.pick {
+            p.first.get_or_insert_with(|| pick.clone());
+            p.last = Some(pick);
         }
         if let Some(h) = m.help {
             p.help = h;
@@ -228,7 +241,7 @@ mod tests {
     fn mv(player: &str, right: u32, total: u32, solved: bool, parts: &[&str]) -> Move {
         Move {
             player: player.into(), name: format!("N{player}"), team: "1".into(), right, total, tries: 1, ms: 1000, solved,
-            parts: parts.iter().map(|s| s.to_string()).collect(), quiz: None, help: None,
+            parts: parts.iter().map(|s| s.to_string()).collect(), quiz: None, help: None, pick: None,
         }
     }
 
@@ -282,5 +295,32 @@ mod tests {
         // resolver tira o pedido de ajuda
         s.apply("r/e1", mv("a", 5, 5, true, &[]), now).unwrap();
         assert!(!s.room("r", now).unwrap().puzzles["e1"][0].help);
+    }
+
+    #[test]
+    fn first_pick_is_kept_and_last_follows() {
+        let s = Store::default();
+        let now = Instant::now();
+        // votação: a primeira escolha fica, a segunda votação fica em `last`
+        let mut m = mv("a", 1, 1, true, &[]);
+        m.pick = Some(vec![2]);
+        let you = s.apply("r/q1", m, now).unwrap().you.unwrap();
+        assert_eq!(you.first, Some(vec![2]));
+        assert_eq!(you.last, Some(vec![2]));
+        let mut m = mv("a", 1, 1, true, &[]);
+        m.pick = Some(vec![0]);
+        let you = s.apply("r/q1", m, now).unwrap().you.unwrap();
+        assert_eq!(you.first, Some(vec![2]));
+        assert_eq!(you.last, Some(vec![0]));
+        // sem pick, nada muda
+        let you = s.apply("r/q1", mv("a", 1, 1, true, &[]), now).unwrap().you.unwrap();
+        assert_eq!(you.last, Some(vec![0]));
+        // cartões a mais ou valores absurdos são recusados
+        let mut m = mv("b", 1, 1, true, &[]);
+        m.pick = Some(vec![0; 41]);
+        assert!(s.apply("r/q1", m, now).is_err());
+        let mut m = mv("b", 1, 1, true, &[]);
+        m.pick = Some(vec![99]);
+        assert!(s.apply("r/q1", m, now).is_err());
     }
 }
