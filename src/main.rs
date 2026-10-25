@@ -1,8 +1,8 @@
 //! API Tempo Açores da UC de PDM (CTeSP DAW, ESTA, Universidade dos Açores, 2026/27).
 //!
 //! Ilhas, trilhos e os dados reais do IPMA (previsão, avisos, mar, sismos e estações)
-//! para a app dos alunos, favoritos sincronizados e um feed de relatos (texto e
-//! fotografia) para exercitarem POST, PUT e DELETE.
+//! para a app dos alunos, contas de utilizador dentro da app de cada grupo, favoritos
+//! sincronizados e um feed de relatos (texto e fotografia) para exercitarem POST, PUT e DELETE.
 mod auth;
 mod data;
 mod error;
@@ -11,6 +11,7 @@ mod ipma;
 mod play;
 mod routes;
 mod usage;
+mod users;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -107,7 +108,11 @@ async fn main() -> anyhow::Result<()> {
 
     let v1 = Router::new()
         .route("/auth/token", post(routes::token))
-        .route("/me", get(routes::me))
+        .route("/auth/register", post(users::register))
+        .route("/auth/login", post(users::login))
+        .route("/auth/refresh", post(users::refresh))
+        .route("/auth/logout", post(users::logout))
+        .route("/me", get(routes::me).delete(users::delete_account))
         .route("/me/favorites", get(routes::favorites))
         .route("/me/favorites/{kind}/{id}", put(routes::add_favorite).delete(routes::remove_favorite))
         .route("/islands", get(routes::islands))

@@ -6,9 +6,9 @@ Em produção em **https://api-pdm.sublimecipher.com** (documentação em `/docs
 
 - Ilhas e trilhos dos Açores, e a previsão a 5 dias do IPMA (dados abertos, com cache de 30 minutos).
 - Outros dados do IPMA, normalizados e com cache: avisos meteorológicos (`/v1/warnings`), estado do mar (`/v1/islands/{id}/sea`), observações das estações (`/v1/islands/{id}/observations`) e sismos (`/v1/earthquakes`). As apps dos alunos nunca falam com o IPMA diretamente.
-- Favoritos (ilhas e trilhos) guardados na conta, em `/v1/me/favorites`: `PUT` e `DELETE` em `/v1/me/favorites/{islands|trails}/{id}`, ambos idempotentes.
+- Favoritos (ilhas e trilhos) de cada utilizador, em `/v1/me/favorites`: `PUT` e `DELETE` em `/v1/me/favorites/{islands|trails}/{id}`, ambos idempotentes.
 - Relatos da turma: texto e fotografia sobre o tempo numa ilha, para exercitar POST, PUT e DELETE.
-- Autenticação por aluno: `clientId` e `clientSecret` trocados por um JWT em `POST /v1/auth/token`.
+- Autenticação em dois níveis. A app (de um aluno ou de um grupo) tem `clientId` e `clientSecret`, trocados por um JWT em `POST /v1/auth/token`. Dentro de cada app, as pessoas criam conta e fazem login (`/v1/auth/register`, `/login`, `/refresh`, `/logout`): access token de 15 minutos e refresh token de 30 dias, guardado só em hash. `DELETE /v1/me` apaga a conta.
 - Documentação interativa em `/docs` (Swagger UI) e a especificação em `/openapi.json`.
 
 Rust (axum, sqlx), PostgreSQL. No servidor: serviço systemd `pdm-api` na porta 3002, atrás do Caddy; variáveis em `/etc/pdm-api.env`; fotografias em `/var/lib/pdm-api/media`.
@@ -18,7 +18,7 @@ Rust (axum, sqlx), PostgreSQL. No servidor: serviço systemd `pdm-api` na porta 
 Rotas em `/admin`, com o header `X-Admin-Key`:
 
 - `POST /admin/students` com `{"name": "...", "github": "..."}`: cria um aluno e devolve o `clientId` e o `clientSecret` (o segredo só aparece aqui).
-- `GET /admin/students`: alunos, último acesso e número de relatos.
+- `GET /admin/students`: alunos e grupos (as apps), último acesso, número de relatos e de utilizadores.
 - `POST /admin/students/{clientId}/reset-secret`: gera um segredo novo.
 - `DELETE /admin/students/{clientId}`: apaga um aluno e os seus relatos.
 - `DELETE /admin/reports/{id}`: apaga qualquer relato.

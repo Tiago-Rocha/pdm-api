@@ -8,7 +8,7 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::auth::{self, Admin, Student};
+use crate::auth::{self, Admin, Claims, Student, User};
 use crate::data::{self, Difficulty, ISLANDS, TRAILS};
 use crate::error::{ApiError, ApiResult};
 use crate::AppState;
@@ -54,8 +54,16 @@ pub async fn token(State(st): State<AppState>, body: Option<Json<TokenRequest>>)
     Ok(res)
 }
 
-pub async fn me(Student(c): Student) -> Json<Value> {
-    Json(json!({ "clientId": c.client_id, "name": c.name, "tokenExpiresAt": c.exp }))
+pub async fn me(State(st): State<AppState>, Student(c): Student) -> ApiResult<Json<Value>> {
+    let user = match c.uid {
+        Some(uid) => sqlx::query_as::<_, (String, String)>("SELECT email, name FROM users WHERE id = $1")
+            .bind(uid)
+            .fetch_optional(&st.db)
+            .await?
+            .map(|(email, name)| json!({ "id": uid, "email": email, "name": name })),
+        None => None,
+    };
+    Ok(Json(json!({ "clientId": c.client_id, "name": c.name, "tokenExpiresAt": c.exp, "user": user })))
 }
 
 // ---------- ilhas, trilhos, previsão ----------
@@ -255,11 +263,11 @@ fn favorite_target(kind: &str, id: &str) -> ApiResult<&'static str> {
     }
 }
 
-/// GET /v1/me/favorites: as ilhas e os trilhos favoritos, os mais recentes primeiro.
-pub async fn favorites(State(st): State<AppState>, Student(c): Student) -> ApiResult<Json<Value>> {
+/// GET /v1/me/favorites: as ilhas e os trilhos favoritos do utilizador, os mais recentes primeiro.
+pub async fn favorites(State(st): State<AppState>, u: User) -> ApiResult<Json<Value>> {
     let rows: Vec<(String, String, OffsetDateTime)> =
-        sqlx::query_as("SELECT kind, item_id, created_at FROM favorites WHERE student_id = $1 ORDER BY created_at DESC")
-            .bind(c.sub)
+        sqlx::query_as("SELECT kind, item_id, created_at FROM favorites WHERE user_id = $1 ORDER BY created_at DESC")
+            .bind(u.id)
             .fetch_all(&st.db)
             .await?;
     let (mut islands, mut trails) = (vec![], vec![]);
@@ -280,12 +288,12 @@ pub async fn favorites(State(st): State<AppState>, Student(c): Student) -> ApiRe
 /// PUT /v1/me/favorites/{islands|trails}/{id}: marca como favorito. Repetir não faz mal.
 pub async fn add_favorite(
     State(st): State<AppState>,
-    Student(c): Student,
+    u: User,
     Path((kind, id)): Path<(String, String)>,
 ) -> ApiResult<StatusCode> {
     let kind = favorite_target(&kind, &id)?;
-    sqlx::query("INSERT INTO favorites (student_id, kind, item_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
-        .bind(c.sub)
+    sqlx::query("INSERT INTO favorites (user_id, kind, item_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
+        .bind(u.id)
         .bind(kind)
         .bind(&id)
         .execute(&st.db)
@@ -296,12 +304,12 @@ pub async fn add_favorite(
 /// DELETE /v1/me/favorites/{islands|trails}/{id}: tira dos favoritos. Repetir não faz mal.
 pub async fn remove_favorite(
     State(st): State<AppState>,
-    Student(c): Student,
+    u: User,
     Path((kind, id)): Path<(String, String)>,
 ) -> ApiResult<StatusCode> {
     let kind = favorite_target(&kind, &id)?;
-    sqlx::query("DELETE FROM favorites WHERE student_id = $1 AND kind = $2 AND item_id = $3")
-        .bind(c.sub)
+    sqlx::query("DELETE FROM favorites WHERE user_id = $1 AND kind = $2 AND item_id = $3")
+        .bind(u.id)
         .bind(kind)
         .bind(&id)
         .execute(&st.db)
@@ -322,24 +330,35 @@ struct ReportRow {
     updated_at: OffsetDateTime,
     client_id: String,
     name: String,
+    user_id: Option<Uuid>,
+    user_name: Option<String>,
 }
 
-const REPORT_SELECT: &str = "SELECT r.id, r.student_id, r.island_id, r.text, r.photo, r.created_at, r.updated_at, s.client_id, s.name
-     FROM reports r JOIN students s ON s.id = r.student_id";
+const REPORT_SELECT: &str = "SELECT r.id, r.student_id, r.island_id, r.text, r.photo, r.created_at, r.updated_at, s.client_id, s.name,
+            r.user_id, u.name AS user_name
+     FROM reports r JOIN students s ON s.id = r.student_id LEFT JOIN users u ON u.id = r.user_id";
 
 fn ts(t: OffsetDateTime) -> String {
     t.format(&Rfc3339).unwrap_or_default()
 }
 
-fn report_json(st: &AppState, r: &ReportRow, me: Uuid) -> Value {
+/// Com um utilizador no token, são dele os relatos que escreveu; só com a app, os que a app escreveu sem utilizador.
+fn is_mine(r: &ReportRow, c: &Claims) -> bool {
+    match c.uid {
+        Some(uid) => r.user_id == Some(uid),
+        None => r.student_id == c.sub && r.user_id.is_none(),
+    }
+}
+
+fn report_json(st: &AppState, r: &ReportRow, me: &Claims) -> Value {
     json!({
         "id": r.id,
         "islandId": r.island_id,
         "islandName": data::island(&r.island_id).map(|i| i.name).unwrap_or(""),
         "text": r.text,
         "photoUrl": r.photo.as_ref().map(|p| format!("{}/media/{p}", st.public_url)),
-        "author": { "clientId": r.client_id, "name": r.name },
-        "mine": r.student_id == me,
+        "author": { "clientId": r.client_id, "name": r.name, "userName": r.user_name },
+        "mine": is_mine(r, me),
         "createdAt": ts(r.created_at),
         "updatedAt": ts(r.updated_at),
     })
@@ -414,12 +433,12 @@ pub async fn list_reports(
                 .await?
         }
     };
-    Ok(Json(Value::Array(rows.iter().map(|r| report_json(&st, r, c.sub)).collect())))
+    Ok(Json(Value::Array(rows.iter().map(|r| report_json(&st, r, &c)).collect())))
 }
 
 pub async fn get_report(State(st): State<AppState>, Student(c): Student, Path(id): Path<String>) -> ApiResult<Json<Value>> {
     let r = load_report(&st, parse_id(&id)?).await?;
-    Ok(Json(report_json(&st, &r, c.sub)))
+    Ok(Json(report_json(&st, &r, &c)))
 }
 
 #[derive(Deserialize)]
@@ -466,16 +485,17 @@ pub async fn create_report(State(st): State<AppState>, Student(c): Student, req:
         None => None,
     };
     let id = Uuid::new_v4();
-    sqlx::query("INSERT INTO reports (id, student_id, island_id, text, photo) VALUES ($1, $2, $3, $4, $5)")
+    sqlx::query("INSERT INTO reports (id, student_id, island_id, text, photo, user_id) VALUES ($1, $2, $3, $4, $5, $6)")
         .bind(id)
         .bind(c.sub)
         .bind(&island_id)
         .bind(&text)
         .bind(&photo)
+        .bind(c.uid)
         .execute(&st.db)
         .await?;
     let r = load_report(&st, id).await?;
-    Ok((StatusCode::CREATED, Json(report_json(&st, &r, c.sub))))
+    Ok((StatusCode::CREATED, Json(report_json(&st, &r, &c))))
 }
 
 #[derive(Deserialize)]
@@ -488,7 +508,7 @@ pub struct EditReport {
 
 async fn own_report(st: &AppState, c: &auth::Claims, id: &str) -> ApiResult<ReportRow> {
     let r = load_report(st, parse_id(id)?).await?;
-    if r.student_id != c.sub {
+    if !is_mine(&r, c) {
         return Err(ApiError::Forbidden("Só podes alterar os teus relatos.".into()));
     }
     Ok(r)
@@ -520,7 +540,7 @@ pub async fn update_report(
         .bind(r.id)
         .execute(&st.db)
         .await?;
-    Ok(Json(report_json(&st, &load_report(&st, r.id).await?, c.sub)))
+    Ok(Json(report_json(&st, &load_report(&st, r.id).await?, &c)))
 }
 
 /// PUT /v1/reports/{id}/photo: multipart/form-data com o campo photo. Substitui a fotografia.
@@ -541,7 +561,7 @@ pub async fn put_photo(
     let name = save_photo(&st, &bytes).await?;
     sqlx::query("UPDATE reports SET photo = $1, updated_at = now() WHERE id = $2").bind(&name).bind(r.id).execute(&st.db).await?;
     remove_photo(&st, &r.photo).await;
-    Ok(Json(report_json(&st, &load_report(&st, r.id).await?, c.sub)))
+    Ok(Json(report_json(&st, &load_report(&st, r.id).await?, &c)))
 }
 
 /// DELETE /v1/reports/{id}. Só o autor.
@@ -600,8 +620,9 @@ pub async fn admin_reset_secret(State(st): State<AppState>, _a: Admin, Path(clie
 }
 
 pub async fn admin_students(State(st): State<AppState>, _a: Admin) -> ApiResult<Json<Value>> {
-    let rows: Vec<(String, String, Option<String>, Option<OffsetDateTime>, i64)> = sqlx::query_as(
-        "SELECT s.client_id, s.name, s.github, s.last_seen, count(r.id)
+    let rows: Vec<(String, String, Option<String>, Option<OffsetDateTime>, i64, i64)> = sqlx::query_as(
+        "SELECT s.client_id, s.name, s.github, s.last_seen, count(r.id),
+                (SELECT count(*) FROM users u WHERE u.app_id = s.id)
          FROM students s LEFT JOIN reports r ON r.student_id = s.id
          GROUP BY s.id ORDER BY s.name",
     )
@@ -609,8 +630,8 @@ pub async fn admin_students(State(st): State<AppState>, _a: Admin) -> ApiResult<
     .await?;
     Ok(Json(Value::Array(
         rows.into_iter()
-            .map(|(client_id, name, github, last_seen, reports)| {
-                json!({ "clientId": client_id, "name": name, "github": github, "lastSeen": last_seen.map(ts), "reports": reports })
+            .map(|(client_id, name, github, last_seen, reports, users)| {
+                json!({ "clientId": client_id, "name": name, "github": github, "lastSeen": last_seen.map(ts), "reports": reports, "users": users })
             })
             .collect(),
     )))

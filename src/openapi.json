@@ -3,7 +3,7 @@
  "info": {
   "title": "API Tempo Açores",
   "version": "1.0.0",
-  "description": "API da UC de PDM (CTeSP DAW, ESTA, Universidade dos Açores, 2026/27).\n\n1. Troca o teu `clientId` e `clientSecret` por um token em **POST /v1/auth/token**.\n2. Envia o token em todos os outros pedidos: `Authorization: Bearer <token>`. Aqui no Swagger, usa o botão **Authorize**.\n3. O token dura 1 hora. Quando expirar (401), pede outro.\n\nA previsão, os avisos, o estado do mar, os sismos e as observações das estações vêm do IPMA (dados abertos) e ficam em cache na API (10 a 30 minutos). Os valores que o IPMA não tem chegam como `null`. Os favoritos ficam guardados na conta: aparecem em todos os telemóveis com o mesmo `clientId`. Os relatos são partilhados pela turma: todos veem os de todos, cada um só altera os seus.\n\nErros vêm sempre assim: `{\"error\": {\"code\": \"not_found\", \"message\": \"...\"}}`."
+  "description": "API da UC de PDM (CTeSP DAW, ESTA, Universidade dos Açores, 2026/27).\n\nHá dois tipos de token:\n\n- **Token da app**: troca o `clientId` e o `clientSecret` da tua app em **POST /v1/auth/token**. Dura 1 hora e chega para os dados públicos (ilhas, previsão, trilhos, avisos, relatos).\n- **Token de um utilizador**: cada pessoa cria a sua conta na app em **POST /v1/auth/register** e entra em **POST /v1/auth/login**. O access token dura 15 minutos; quando expirar (401), pede outro em **POST /v1/auth/refresh** com o refresh token, que dura 30 dias. Os favoritos e o apagar conta precisam deste token.\n\nEnvia o token em todos os pedidos: `Authorization: Bearer <token>`. Aqui no Swagger, usa o botão **Authorize**.\n\nA previsão, os avisos, o estado do mar, os sismos e as observações das estações vêm do IPMA (dados abertos) e ficam em cache na API (10 a 30 minutos). Os valores que o IPMA não tem chegam como `null`. Os favoritos são de cada utilizador: aparecem em todos os telemóveis onde essa pessoa fizer login. Os relatos são partilhados pela turma: todos veem os de todos, cada um só altera os seus.\n\nErros vêm sempre assim: `{\"error\": {\"code\": \"not_found\", \"message\": \"...\"}}`."
  },
  "servers": [
   {
@@ -93,12 +93,208 @@
     }
    }
   },
+  "/v1/auth/register": {
+   "post": {
+    "tags": [
+     "Autenticação"
+    ],
+    "summary": "Criar uma conta de utilizador na app",
+    "description": "Devolve logo a sessão, como o login. O mesmo email pode ter conta em apps diferentes.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Register"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Conta criada e sessão iniciada.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Session"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Pedido inválido.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "bad_request",
+          "message": "A password tem de ter pelo menos 8 caracteres."
+         }
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "As credenciais da app estão erradas.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "clientId ou clientSecret errados."
+         }
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "Esse email já tem conta nesta app.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "conflict",
+          "message": "Já há uma conta com esse email nesta app. Faz login."
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/auth/login": {
+   "post": {
+    "tags": [
+     "Autenticação"
+    ],
+    "summary": "Login de um utilizador da app",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Login"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Sessão iniciada.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Session"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Credenciais da app, email ou password errados.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "Email ou password errados."
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/auth/refresh": {
+   "post": {
+    "tags": [
+     "Autenticação"
+    ],
+    "summary": "Access token novo a partir do refresh token",
+    "description": "Usa quando a API responder 401 com o token de um utilizador. O refresh token fica o mesmo até ao logout ou aos 30 dias.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RefreshRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Access token novo.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Session"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "O refresh token expirou, foi revogado no logout ou a conta foi apagada.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "Esta sessão terminou. Faz login outra vez."
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/auth/logout": {
+   "post": {
+    "tags": [
+     "Autenticação"
+    ],
+    "summary": "Terminar a sessão",
+    "description": "O refresh token deixa de valer. Idempotente: repetir dá sempre 204. A app deve apagar também o access token e os dados do utilizador guardados no telemóvel.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RefreshRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Sessão terminada."
+     }
+    }
+   }
+  },
   "/v1/me": {
    "get": {
     "tags": [
      "Autenticação"
     ],
-    "summary": "Quem sou eu (para testar o token)",
+    "summary": "Quem sou eu: a app e, com login, o utilizador",
     "security": [
      {
       "bearerAuth": []
@@ -132,6 +328,55 @@
       }
      }
     }
+   },
+   "delete": {
+    "tags": [
+     "Autenticação"
+    ],
+    "summary": "Apagar a conta do utilizador",
+    "description": "Apaga a conta, os favoritos, as sessões e os relatos do utilizador. As lojas obrigam a ter esta opção dentro da app quando a app deixa criar conta.",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Conta apagada."
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "O token é só da app: falta o login de um utilizador.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "forbidden",
+          "message": "Este pedido é de um utilizador: faz login em POST /v1/auth/login e usa o token que vem na resposta."
+         }
+        }
+       }
+      }
+     }
+    }
    }
   },
   "/v1/me/favorites": {
@@ -140,7 +385,7 @@
      "Favoritos"
     ],
     "summary": "Os teus favoritos: ilhas e trilhos",
-    "description": "Ficam na conta: dois telemóveis com o mesmo clientId veem os mesmos favoritos.",
+    "description": "Os favoritos são do utilizador: aparecem em todos os telemóveis onde ele fizer login. Precisa do token de um utilizador (POST /v1/auth/login).",
     "security": [
      {
       "bearerAuth": []
@@ -172,6 +417,22 @@
         }
        }
       }
+     },
+     "403": {
+      "description": "O token é só da app: falta o login de um utilizador.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "forbidden",
+          "message": "Este pedido é de um utilizador: faz login em POST /v1/auth/login e usa o token que vem na resposta."
+         }
+        }
+       }
+      }
      }
     }
    }
@@ -182,7 +443,7 @@
      "Favoritos"
     ],
     "summary": "Marcar uma ilha ou um trilho como favorito",
-    "description": "Idempotente: marcar duas vezes dá o mesmo resultado.",
+    "description": "Idempotente: marcar duas vezes dá o mesmo resultado. Precisa do token de um utilizador (POST /v1/auth/login).",
     "security": [
      {
       "bearerAuth": []
@@ -249,6 +510,22 @@
         }
        }
       }
+     },
+     "403": {
+      "description": "O token é só da app: falta o login de um utilizador.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "forbidden",
+          "message": "Este pedido é de um utilizador: faz login em POST /v1/auth/login e usa o token que vem na resposta."
+         }
+        }
+       }
+      }
      }
     }
    },
@@ -257,7 +534,7 @@
      "Favoritos"
     ],
     "summary": "Tirar uma ilha ou um trilho dos favoritos",
-    "description": "Idempotente: tirar uma coisa que já não estava nos favoritos também dá 204.",
+    "description": "Idempotente: tirar uma coisa que já não estava nos favoritos também dá 204. Precisa do token de um utilizador (POST /v1/auth/login).",
     "security": [
      {
       "bearerAuth": []
@@ -320,6 +597,22 @@
          "error": {
           "code": "not_found",
           "message": "Não há nenhum trilho com o id \"atlantida\"."
+         }
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "O token é só da app: falta o login de um utilizador.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "forbidden",
+          "message": "Este pedido é de um utilizador: faz login em POST /v1/auth/login e usa o token que vem na resposta."
          }
         }
        }
@@ -1711,12 +2004,22 @@
      "tokenExpiresAt": {
       "type": "integer",
       "description": "Unix timestamp"
+     },
+     "user": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/User"
+       }
+      ],
+      "nullable": true,
+      "description": "O utilizador com sessão iniciada, ou null com um token só da app."
      }
     },
     "required": [
      "clientId",
      "name",
-     "tokenExpiresAt"
+     "tokenExpiresAt",
+     "user"
     ]
    },
    "Island": {
@@ -1992,6 +2295,12 @@
        },
        "name": {
         "type": "string"
+       },
+       "userName": {
+        "type": "string",
+        "nullable": true,
+        "example": "Ana",
+        "description": "Quem escreveu, se o relato foi criado com o token de um utilizador."
        }
       },
       "required": [
@@ -2486,6 +2795,139 @@
      "trails"
     ],
     "description": "Os mais recentes primeiro."
+   },
+   "Register": {
+    "type": "object",
+    "properties": {
+     "clientId": {
+      "type": "string",
+      "example": "pdm-abc123"
+     },
+     "clientSecret": {
+      "type": "string",
+      "example": "o-segredo-da-app"
+     },
+     "email": {
+      "type": "string",
+      "example": "ana@exemplo.pt",
+      "description": "Não precisa de ser real: a API não envia emails."
+     },
+     "password": {
+      "type": "string",
+      "example": "segredo123",
+      "description": "Pelo menos 8 caracteres."
+     },
+     "name": {
+      "type": "string",
+      "example": "Ana"
+     }
+    },
+    "required": [
+     "clientId",
+     "clientSecret",
+     "email",
+     "password",
+     "name"
+    ]
+   },
+   "Login": {
+    "type": "object",
+    "properties": {
+     "clientId": {
+      "type": "string",
+      "example": "pdm-abc123"
+     },
+     "clientSecret": {
+      "type": "string",
+      "example": "o-segredo-da-app"
+     },
+     "email": {
+      "type": "string",
+      "example": "ana@exemplo.pt"
+     },
+     "password": {
+      "type": "string",
+      "example": "segredo123"
+     }
+    },
+    "required": [
+     "clientId",
+     "clientSecret",
+     "email",
+     "password"
+    ]
+   },
+   "RefreshRequest": {
+    "type": "object",
+    "properties": {
+     "refreshToken": {
+      "type": "string",
+      "example": "0b6f1f5e-8c1a-4f0e-9a51-2a8f3c7d9e10.k3m9q2x7v4p8w6z2n5r8t3y7u9e4a2s6"
+     }
+    },
+    "required": [
+     "refreshToken"
+    ]
+   },
+   "User": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "example": "a5638212-5f42-44a8-a01b-478f9ce60b7d"
+     },
+     "email": {
+      "type": "string",
+      "example": "ana@exemplo.pt"
+     },
+     "name": {
+      "type": "string",
+      "example": "Ana"
+     }
+    },
+    "required": [
+     "id",
+     "email",
+     "name"
+    ]
+   },
+   "Session": {
+    "type": "object",
+    "properties": {
+     "accessToken": {
+      "type": "string",
+      "example": "eyJhbGciOiJIUzI1NiIs..."
+     },
+     "tokenType": {
+      "type": "string",
+      "example": "Bearer"
+     },
+     "expiresIn": {
+      "type": "integer",
+      "example": 900,
+      "description": "Segundos até o access token expirar (15 minutos)."
+     },
+     "refreshToken": {
+      "type": "string",
+      "example": "0b6f1f5e-8c1a-4f0e-9a51-2a8f3c7d9e10.k3m9q2x7v4p8w6z2n5r8t3y7u9e4a2s6",
+      "description": "Guarda-o em armazenamento seguro. Serve para pedir access tokens novos sem pedir a password outra vez."
+     },
+     "refreshExpiresIn": {
+      "type": "integer",
+      "example": 2592000,
+      "description": "Segundos até o refresh token expirar (30 dias). Só vem no registo e no login."
+     },
+     "user": {
+      "$ref": "#/components/schemas/User"
+     }
+    },
+    "required": [
+     "accessToken",
+     "tokenType",
+     "expiresIn",
+     "refreshToken",
+     "user"
+    ]
    }
   }
  }
