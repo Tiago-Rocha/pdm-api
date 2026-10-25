@@ -66,6 +66,8 @@ fn island_json(st: &AppState, i: &data::Island) -> Value {
         "name": i.name,
         "imageUrl": format!("{}/static/islands/{}", st.public_url, i.image),
         "trailCount": TRAILS.iter().filter(|t| t.island_id == i.id).count(),
+        "latitude": i.lat,
+        "longitude": i.lon,
     })
 }
 
@@ -167,6 +169,144 @@ pub async fn trail(State(st): State<AppState>, _s: Student, Path(id): Path<Strin
         .find(|t| t.id == id)
         .map(|t| Json(trail_json(&st, t)))
         .ok_or_else(|| ApiError::NotFound(format!("Não há nenhum trilho com o id \"{id}\".")))
+}
+
+// ---------- avisos, mar, sismos e estações ----------
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WarningFilter {
+    island_id: Option<String>,
+}
+
+pub async fn warnings(State(st): State<AppState>, _s: Student, Query(q): Query<WarningFilter>) -> ApiResult<Json<Value>> {
+    let island = q.island_id.as_deref().map(find_island).transpose()?;
+    let all = st.feeds.warnings(&st.http).await?;
+    Ok(Json(json!(
+        all.iter()
+            .filter(|w| island.is_none_or(|i| w.area == i.warning_area))
+            .collect::<Vec<_>>()
+    )))
+}
+
+pub async fn sea(State(st): State<AppState>, _s: Student, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    let i = find_island(&id)?;
+    let s = st.feeds.sea(&st.http, i.sea_id).await?;
+    Ok(Json(json!({
+        "islandId": i.id,
+        "islandName": i.name,
+        "location": i.sea_local,
+        "source": "IPMA",
+        "updatedAt": s.updated_at,
+        "days": s.days,
+    })))
+}
+
+pub async fn observations(State(st): State<AppState>, _s: Student, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    let i = find_island(&id)?;
+    let o = st.feeds.observations(&st.http, i.id).await?;
+    Ok(Json(json!({
+        "islandId": i.id,
+        "islandName": i.name,
+        "source": "IPMA",
+        "observedAt": o.observed_at,
+        "stations": o.stations,
+    })))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuakeFilter {
+    island_id: Option<String>,
+    min_magnitude: Option<f64>,
+    felt: Option<bool>,
+    limit: Option<usize>,
+}
+
+pub async fn earthquakes(State(st): State<AppState>, _s: Student, Query(q): Query<QuakeFilter>) -> ApiResult<Json<Value>> {
+    if let Some(id) = &q.island_id {
+        find_island(id)?;
+    }
+    let all = st.feeds.earthquakes(&st.http).await?;
+    Ok(Json(json!(
+        all.iter()
+            .filter(|e| q.island_id.as_deref().is_none_or(|id| e.nearest_island_id == id))
+            .filter(|e| q.min_magnitude.is_none_or(|m| e.magnitude >= m))
+            .filter(|e| q.felt.is_none_or(|f| e.felt == f))
+            .take(q.limit.unwrap_or(50).clamp(1, 100))
+            .collect::<Vec<_>>()
+    )))
+}
+
+// ---------- favoritos ----------
+
+/// "islands" ou "trails" no caminho; o id tem de existir.
+fn favorite_target(kind: &str, id: &str) -> ApiResult<&'static str> {
+    match kind {
+        "islands" => find_island(id).map(|_| "island"),
+        "trails" => TRAILS
+            .iter()
+            .any(|t| t.id == id)
+            .then_some("trail")
+            .ok_or_else(|| ApiError::NotFound(format!("Não há nenhum trilho com o id \"{id}\"."))),
+        _ => Err(ApiError::NotFound(format!(
+            "Os favoritos são islands ou trails, não \"{kind}\". Exemplo: PUT /v1/me/favorites/islands/pico."
+        ))),
+    }
+}
+
+/// GET /v1/me/favorites: as ilhas e os trilhos favoritos, os mais recentes primeiro.
+pub async fn favorites(State(st): State<AppState>, Student(c): Student) -> ApiResult<Json<Value>> {
+    let rows: Vec<(String, String, OffsetDateTime)> =
+        sqlx::query_as("SELECT kind, item_id, created_at FROM favorites WHERE student_id = $1 ORDER BY created_at DESC")
+            .bind(c.sub)
+            .fetch_all(&st.db)
+            .await?;
+    let (mut islands, mut trails) = (vec![], vec![]);
+    for (kind, id, at) in rows {
+        // um id que deixou de existir nos dados fixos fica de fora
+        let item = match kind.as_str() {
+            "island" => data::island(&id).map(|i| island_json(&st, i)),
+            _ => TRAILS.iter().find(|t| t.id == id).map(|t| trail_json_ok(&st, t)),
+        };
+        if let Some(mut v) = item {
+            v["addedAt"] = json!(ts(at));
+            if kind == "island" { islands.push(v) } else { trails.push(v) }
+        }
+    }
+    Ok(Json(json!({ "islands": islands, "trails": trails })))
+}
+
+/// PUT /v1/me/favorites/{islands|trails}/{id}: marca como favorito. Repetir não faz mal.
+pub async fn add_favorite(
+    State(st): State<AppState>,
+    Student(c): Student,
+    Path((kind, id)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    let kind = favorite_target(&kind, &id)?;
+    sqlx::query("INSERT INTO favorites (student_id, kind, item_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
+        .bind(c.sub)
+        .bind(kind)
+        .bind(&id)
+        .execute(&st.db)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// DELETE /v1/me/favorites/{islands|trails}/{id}: tira dos favoritos. Repetir não faz mal.
+pub async fn remove_favorite(
+    State(st): State<AppState>,
+    Student(c): Student,
+    Path((kind, id)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    let kind = favorite_target(&kind, &id)?;
+    sqlx::query("DELETE FROM favorites WHERE student_id = $1 AND kind = $2 AND item_id = $3")
+        .bind(c.sub)
+        .bind(kind)
+        .bind(&id)
+        .execute(&st.db)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ---------- relatos ----------

@@ -3,7 +3,7 @@
  "info": {
   "title": "API Tempo Açores",
   "version": "1.0.0",
-  "description": "API da UC de PDM (CTeSP DAW, ESTA, Universidade dos Açores, 2026/27).\n\n1. Troca o teu `clientId` e `clientSecret` por um token em **POST /v1/auth/token**.\n2. Envia o token em todos os outros pedidos: `Authorization: Bearer <token>`. Aqui no Swagger, usa o botão **Authorize**.\n3. O token dura 1 hora. Quando expirar (401), pede outro.\n\nA previsão vem do IPMA (dados abertos) e é atualizada de 30 em 30 minutos. Os relatos são partilhados pela turma: todos veem os de todos, cada um só altera os seus.\n\nErros vêm sempre assim: `{\"error\": {\"code\": \"not_found\", \"message\": \"...\"}}`."
+  "description": "API da UC de PDM (CTeSP DAW, ESTA, Universidade dos Açores, 2026/27).\n\n1. Troca o teu `clientId` e `clientSecret` por um token em **POST /v1/auth/token**.\n2. Envia o token em todos os outros pedidos: `Authorization: Bearer <token>`. Aqui no Swagger, usa o botão **Authorize**.\n3. O token dura 1 hora. Quando expirar (401), pede outro.\n\nA previsão, os avisos, o estado do mar, os sismos e as observações das estações vêm do IPMA (dados abertos) e ficam em cache na API (10 a 30 minutos). Os valores que o IPMA não tem chegam como `null`. Os favoritos ficam guardados na conta: aparecem em todos os telemóveis com o mesmo `clientId`. Os relatos são partilhados pela turma: todos veem os de todos, cada um só altera os seus.\n\nErros vêm sempre assim: `{\"error\": {\"code\": \"not_found\", \"message\": \"...\"}}`."
  },
  "servers": [
   {
@@ -19,6 +19,12 @@
   },
   {
    "name": "Previsão"
+  },
+  {
+   "name": "Avisos e sismos"
+  },
+  {
+   "name": "Favoritos"
   },
   {
    "name": "Relatos"
@@ -120,6 +126,200 @@
          "error": {
           "code": "unauthorized",
           "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/me/favorites": {
+   "get": {
+    "tags": [
+     "Favoritos"
+    ],
+    "summary": "Os teus favoritos: ilhas e trilhos",
+    "description": "Ficam na conta: dois telemóveis com o mesmo clientId veem os mesmos favoritos.",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Os favoritos.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Favorites"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/me/favorites/{kind}/{id}": {
+   "put": {
+    "tags": [
+     "Favoritos"
+    ],
+    "summary": "Marcar uma ilha ou um trilho como favorito",
+    "description": "Idempotente: marcar duas vezes dá o mesmo resultado.",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "kind",
+      "in": "path",
+      "required": true,
+      "description": "islands ou trails",
+      "schema": {
+       "type": "string",
+       "enum": [
+        "islands",
+        "trails"
+       ],
+       "example": "islands"
+      }
+     },
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "description": "Id da ilha ou do trilho",
+      "schema": {
+       "type": "string",
+       "example": "pico"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Fica nos favoritos."
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "A ilha ou o trilho não existe, ou kind não é islands nem trails.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Não há nenhum trilho com o id \"atlantida\"."
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "Favoritos"
+    ],
+    "summary": "Tirar uma ilha ou um trilho dos favoritos",
+    "description": "Idempotente: tirar uma coisa que já não estava nos favoritos também dá 204.",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "kind",
+      "in": "path",
+      "required": true,
+      "description": "islands ou trails",
+      "schema": {
+       "type": "string",
+       "enum": [
+        "islands",
+        "trails"
+       ],
+       "example": "islands"
+      }
+     },
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "description": "Id da ilha ou do trilho",
+      "schema": {
+       "type": "string",
+       "example": "pico"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Já não está nos favoritos."
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "A ilha ou o trilho não existe, ou kind não é islands nem trails.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Não há nenhum trilho com o id \"atlantida\"."
          }
         }
        }
@@ -326,6 +526,177 @@
     }
    }
   },
+  "/v1/islands/{id}/sea": {
+   "get": {
+    "tags": [
+     "Previsão"
+    ],
+    "summary": "Estado do mar perto de uma ilha, hoje e nos dois dias seguintes (IPMA)",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "description": "Id da ilha",
+      "schema": {
+       "type": "string",
+       "example": "sao-miguel"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "O estado do mar.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Sea"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Não existe.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Não há nenhuma ilha com o id \"atlantida\"."
+         }
+        }
+       }
+      }
+     },
+     "502": {
+      "description": "O IPMA não respondeu e não há dados em cache.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "upstream_error",
+          "message": "O IPMA não respondeu. Tenta daqui a pouco."
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/islands/{id}/observations": {
+   "get": {
+    "tags": [
+     "Previsão"
+    ],
+    "summary": "Tempo agora: a última leitura das estações do IPMA na ilha",
+    "description": "Leituras de hora a hora das últimas 24 horas; cada estação traz a sua leitura mais recente.",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "description": "Id da ilha",
+      "schema": {
+       "type": "string",
+       "example": "sao-miguel"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "As estações da ilha.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Observations"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Não existe.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Não há nenhuma ilha com o id \"atlantida\"."
+         }
+        }
+       }
+      }
+     },
+     "502": {
+      "description": "O IPMA não respondeu e não há dados em cache.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "upstream_error",
+          "message": "O IPMA não respondeu. Tenta daqui a pouco."
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/v1/trails": {
    "get": {
     "tags": [
@@ -458,6 +829,213 @@
          "error": {
           "code": "not_found",
           "message": "Não há nenhum trilho com o id \"atlantida\"."
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/warnings": {
+   "get": {
+    "tags": [
+     "Avisos e sismos"
+    ],
+    "summary": "Avisos meteorológicos em vigor ou previstos nos Açores (IPMA)",
+    "description": "Só os amarelos, laranja e vermelhos, dos mais graves para os menos graves. Uma lista vazia quer dizer que não há avisos.",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "islandId",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "example": "faial"
+      },
+      "description": "Só os avisos da área desta ilha."
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Lista de avisos (pode vir vazia).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Warning"
+         }
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Não existe.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Não há nenhuma ilha com o id \"atlantida\"."
+         }
+        }
+       }
+      }
+     },
+     "502": {
+      "description": "O IPMA não respondeu e não há dados em cache.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "upstream_error",
+          "message": "O IPMA não respondeu. Tenta daqui a pouco."
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/earthquakes": {
+   "get": {
+    "tags": [
+     "Avisos e sismos"
+    ],
+    "summary": "Sismos dos últimos 30 dias na região dos Açores (IPMA)",
+    "description": "Do mais recente para o mais antigo.",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "islandId",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "example": "sao-miguel"
+      },
+      "description": "Só os sismos com o epicentro mais perto desta ilha."
+     },
+     {
+      "name": "minMagnitude",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "number",
+       "example": 3.0
+      }
+     },
+     {
+      "name": "felt",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "example": true
+      },
+      "description": "Só os sentidos (true) ou só os não sentidos (false)."
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "example": 50
+      },
+      "description": "1 a 100, por defeito 50."
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Lista de sismos.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Earthquake"
+         }
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Não existe.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "not_found",
+          "message": "Não há nenhuma ilha com o id \"atlantida\"."
+         }
+        }
+       }
+      }
+     },
+     "502": {
+      "description": "O IPMA não respondeu e não há dados em cache.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "upstream_error",
+          "message": "O IPMA não respondeu. Tenta daqui a pouco."
          }
         }
        }
@@ -1159,13 +1737,24 @@
      "trailCount": {
       "type": "integer",
       "example": 3
+     },
+     "latitude": {
+      "type": "number",
+      "example": 37.78,
+      "description": "Centro aproximado da ilha."
+     },
+     "longitude": {
+      "type": "number",
+      "example": -25.5
      }
     },
     "required": [
      "id",
      "name",
      "imageUrl",
-     "trailCount"
+     "trailCount",
+     "latitude",
+     "longitude"
     ]
    },
    "Trail": {
@@ -1434,6 +2023,469 @@
      "createdAt",
      "updatedAt"
     ]
+   },
+   "Warning": {
+    "type": "object",
+    "properties": {
+     "area": {
+      "type": "string",
+      "enum": [
+       "AOR",
+       "ACE",
+       "AOC"
+      ],
+      "example": "ACE",
+      "description": "Área de aviso do IPMA: AOR Grupo Oriental, ACE Grupo Central, AOC Grupo Ocidental."
+     },
+     "areaName": {
+      "type": "string",
+      "example": "Grupo Central"
+     },
+     "islandIds": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "example": [
+       "terceira",
+       "graciosa",
+       "sao-jorge",
+       "pico",
+       "faial"
+      ]
+     },
+     "type": {
+      "type": "string",
+      "enum": [
+       "wind",
+       "rain",
+       "seaState",
+       "thunderstorm",
+       "fog",
+       "snow",
+       "hot",
+       "cold",
+       "other"
+      ],
+      "example": "wind"
+     },
+     "typeLabel": {
+      "type": "string",
+      "example": "Vento"
+     },
+     "level": {
+      "type": "string",
+      "enum": [
+       "yellow",
+       "orange",
+       "red"
+      ],
+      "example": "yellow",
+      "description": "Os avisos verdes (sem aviso) não aparecem."
+     },
+     "levelLabel": {
+      "type": "string",
+      "example": "Amarelo"
+     },
+     "text": {
+      "type": "string",
+      "example": "Vento de sudoeste com rajadas até 90 km/h.",
+      "description": "Pode vir vazio."
+     },
+     "startTime": {
+      "type": "string",
+      "example": "2026-10-26T06:00:00"
+     },
+     "endTime": {
+      "type": "string",
+      "example": "2026-10-26T18:00:00"
+     }
+    },
+    "required": [
+     "area",
+     "areaName",
+     "islandIds",
+     "type",
+     "typeLabel",
+     "level",
+     "levelLabel",
+     "text",
+     "startTime",
+     "endTime"
+    ]
+   },
+   "SeaDay": {
+    "type": "object",
+    "properties": {
+     "date": {
+      "type": "string",
+      "example": "2026-10-26"
+     },
+     "waveHeightMin": {
+      "type": "number",
+      "nullable": true,
+      "example": 1.2,
+      "description": "Altura da ondulação, em metros."
+     },
+     "waveHeightMax": {
+      "type": "number",
+      "nullable": true,
+      "example": 3.1
+     },
+     "wavePeriodMin": {
+      "type": "number",
+      "nullable": true,
+      "example": 5.6,
+      "description": "Período da ondulação, em segundos."
+     },
+     "wavePeriodMax": {
+      "type": "number",
+      "nullable": true,
+      "example": 9.4
+     },
+     "waveDirection": {
+      "type": "string",
+      "nullable": true,
+      "example": "NW"
+     },
+     "totalSeaMin": {
+      "type": "number",
+      "nullable": true,
+      "example": 2.0,
+      "description": "Altura total do mar (ondulação e vaga), em metros."
+     },
+     "totalSeaMax": {
+      "type": "number",
+      "nullable": true,
+      "example": 3.0
+     },
+     "seaTempMin": {
+      "type": "number",
+      "nullable": true,
+      "example": 21.3,
+      "description": "Temperatura da água, em °C."
+     },
+     "seaTempMax": {
+      "type": "number",
+      "nullable": true,
+      "example": 21.5
+     }
+    },
+    "required": [
+     "date",
+     "waveHeightMin",
+     "waveHeightMax",
+     "wavePeriodMin",
+     "wavePeriodMax",
+     "waveDirection",
+     "totalSeaMin",
+     "totalSeaMax",
+     "seaTempMin",
+     "seaTempMax"
+    ]
+   },
+   "Sea": {
+    "type": "object",
+    "properties": {
+     "islandId": {
+      "type": "string",
+      "example": "terceira"
+     },
+     "islandName": {
+      "type": "string",
+      "example": "Terceira"
+     },
+     "location": {
+      "type": "string",
+      "example": "Horta",
+      "description": "O ponto da costa com previsão mais perto da ilha: Ponta Delgada, Horta ou Santa Cruz das Flores."
+     },
+     "source": {
+      "type": "string",
+      "example": "IPMA"
+     },
+     "updatedAt": {
+      "type": "string",
+      "example": "2026-10-25T15:31:01"
+     },
+     "days": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/SeaDay"
+      },
+      "description": "Hoje, amanhã e depois."
+     }
+    },
+    "required": [
+     "islandId",
+     "islandName",
+     "location",
+     "source",
+     "updatedAt",
+     "days"
+    ]
+   },
+   "Station": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "example": "1200504"
+     },
+     "name": {
+      "type": "string",
+      "example": "Pico (Aeródromo)"
+     },
+     "latitude": {
+      "type": "number",
+      "example": 38.552
+     },
+     "longitude": {
+      "type": "number",
+      "example": -28.441
+     },
+     "observedAt": {
+      "type": "string",
+      "example": "2026-10-25T16:00",
+      "description": "Hora UTC da última leitura desta estação."
+     },
+     "temperature": {
+      "type": "number",
+      "nullable": true,
+      "example": 23.5,
+      "description": "°C"
+     },
+     "humidity": {
+      "type": "number",
+      "nullable": true,
+      "example": 69.0,
+      "description": "%"
+     },
+     "windKmh": {
+      "type": "number",
+      "nullable": true,
+      "example": 22.0,
+      "description": "km/h"
+     },
+     "windDirection": {
+      "type": "string",
+      "nullable": true,
+      "enum": [
+       "N",
+       "NE",
+       "E",
+       "SE",
+       "S",
+       "SW",
+       "W",
+       "NW",
+       null
+      ],
+      "example": "SW"
+     },
+     "pressure": {
+      "type": "number",
+      "nullable": true,
+      "example": 1019.1,
+      "description": "hPa"
+     },
+     "precipitation": {
+      "type": "number",
+      "nullable": true,
+      "example": 0.0,
+      "description": "mm na última hora"
+     },
+     "radiation": {
+      "type": "number",
+      "nullable": true,
+      "example": 1743.3,
+      "description": "kJ/m²"
+     }
+    },
+    "required": [
+     "id",
+     "name",
+     "latitude",
+     "longitude",
+     "observedAt",
+     "temperature",
+     "humidity",
+     "windKmh",
+     "windDirection",
+     "pressure",
+     "precipitation",
+     "radiation"
+    ]
+   },
+   "Observations": {
+    "type": "object",
+    "properties": {
+     "islandId": {
+      "type": "string",
+      "example": "pico"
+     },
+     "islandName": {
+      "type": "string",
+      "example": "Pico"
+     },
+     "source": {
+      "type": "string",
+      "example": "IPMA"
+     },
+     "observedAt": {
+      "type": "string",
+      "nullable": true,
+      "example": "2026-10-25T16:00",
+      "description": "Hora UTC da leitura mais recente das estações da ilha. null se nenhuma estação tiver leituras."
+     },
+     "stations": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Station"
+      },
+      "description": "Pode vir vazia. Cada estação mede o que pode: os valores em falta vêm a null."
+     }
+    },
+    "required": [
+     "islandId",
+     "islandName",
+     "source",
+     "observedAt",
+     "stations"
+    ]
+   },
+   "Earthquake": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "example": "20261020180718A"
+     },
+     "time": {
+      "type": "string",
+      "example": "2026-10-20T18:07:19",
+      "description": "Hora UTC."
+     },
+     "magnitude": {
+      "type": "number",
+      "example": 5.3
+     },
+     "magnitudeType": {
+      "type": "string",
+      "example": "W",
+      "description": "L (local) ou W (momento)."
+     },
+     "depthKm": {
+      "type": "number",
+      "example": 2.0
+     },
+     "latitude": {
+      "type": "number",
+      "example": 37.854
+     },
+     "longitude": {
+      "type": "number",
+      "example": -26.272
+     },
+     "region": {
+      "type": "string",
+      "example": "Fossa de Hirondelle"
+     },
+     "nearestIslandId": {
+      "type": "string",
+      "example": "sao-miguel"
+     },
+     "felt": {
+      "type": "boolean",
+      "example": true,
+      "description": "Se foi sentido pela população."
+     },
+     "intensity": {
+      "type": "string",
+      "nullable": true,
+      "example": "IV/V",
+      "description": "Intensidade máxima sentida (escala de Mercalli)."
+     },
+     "feltAt": {
+      "type": "string",
+      "nullable": true,
+      "example": "S.Miguel: Ginetes (Ponta Delgada)"
+     }
+    },
+    "required": [
+     "id",
+     "time",
+     "magnitude",
+     "magnitudeType",
+     "depthKm",
+     "latitude",
+     "longitude",
+     "region",
+     "nearestIslandId",
+     "felt",
+     "intensity",
+     "feltAt"
+    ]
+   },
+   "FavoriteIsland": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Island"
+     },
+     {
+      "type": "object",
+      "properties": {
+       "addedAt": {
+        "type": "string",
+        "example": "2026-10-27T09:12:44Z"
+       }
+      },
+      "required": [
+       "addedAt"
+      ]
+     }
+    ]
+   },
+   "FavoriteTrail": {
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Trail"
+     },
+     {
+      "type": "object",
+      "properties": {
+       "addedAt": {
+        "type": "string",
+        "example": "2026-10-27T09:13:02Z"
+       }
+      },
+      "required": [
+       "addedAt"
+      ]
+     }
+    ]
+   },
+   "Favorites": {
+    "type": "object",
+    "properties": {
+     "islands": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/FavoriteIsland"
+      }
+     },
+     "trails": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/FavoriteTrail"
+      }
+     }
+    },
+    "required": [
+     "islands",
+     "trails"
+    ],
+    "description": "Os mais recentes primeiro."
    }
   }
  }

@@ -1,10 +1,12 @@
 //! API Tempo Açores da UC de PDM (CTeSP DAW, ESTA, Universidade dos Açores, 2026/27).
 //!
-//! Ilhas, trilhos e a previsão real do IPMA para a app dos alunos, e um feed de
-//! relatos (texto e fotografia) para exercitarem POST, PUT e DELETE.
+//! Ilhas, trilhos e os dados reais do IPMA (previsão, avisos, mar, sismos e estações)
+//! para a app dos alunos, favoritos sincronizados e um feed de relatos (texto e
+//! fotografia) para exercitarem POST, PUT e DELETE.
 mod auth;
 mod data;
 mod error;
+mod feeds;
 mod ipma;
 mod play;
 mod routes;
@@ -33,6 +35,8 @@ pub struct AppState {
     pub db: PgPool,
     pub http: reqwest::Client,
     pub ipma: Arc<ipma::Cache>,
+    /// avisos, mar, sismos e estações do IPMA
+    pub feeds: Arc<feeds::Feeds>,
     pub jwt_secret: Arc<Vec<u8>>,
     pub admin_key: Arc<String>,
     pub media_dir: Arc<PathBuf>,
@@ -94,6 +98,7 @@ async fn main() -> anyhow::Result<()> {
         bugs: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         play: Arc::new(play::Store::default()),
         ipma: Arc::new(ipma::Cache::default()),
+        feeds: Arc::new(feeds::Feeds::default()),
         jwt_secret: Arc::new(var("JWT_SECRET")?.into_bytes()),
         admin_key: Arc::new(var("ADMIN_KEY")?),
         media_dir: Arc::new(media_dir.clone()),
@@ -103,9 +108,15 @@ async fn main() -> anyhow::Result<()> {
     let v1 = Router::new()
         .route("/auth/token", post(routes::token))
         .route("/me", get(routes::me))
+        .route("/me/favorites", get(routes::favorites))
+        .route("/me/favorites/{kind}/{id}", put(routes::add_favorite).delete(routes::remove_favorite))
         .route("/islands", get(routes::islands))
         .route("/islands/{id}", get(routes::island))
         .route("/islands/{id}/forecast", get(routes::forecast))
+        .route("/islands/{id}/sea", get(routes::sea))
+        .route("/islands/{id}/observations", get(routes::observations))
+        .route("/warnings", get(routes::warnings))
+        .route("/earthquakes", get(routes::earthquakes))
         .route("/trails", get(routes::trails))
         .route("/trails/{id}", get(routes::trail))
         .route("/reports", get(routes::list_reports).post(routes::create_report))

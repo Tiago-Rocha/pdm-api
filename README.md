@@ -5,6 +5,8 @@ API da UC de PDM (CTeSP DAW, ESTA, Universidade dos Açores, 2026/27), para a ap
 Em produção em **https://api-pdm.sublimecipher.com** (documentação em `/docs`). O endereço antigo `pdm.188-245-31-95.sslip.io` reencaminha para lá; a rede da escola bloqueia o sslip.io.
 
 - Ilhas e trilhos dos Açores, e a previsão a 5 dias do IPMA (dados abertos, com cache de 30 minutos).
+- Outros dados do IPMA, normalizados e com cache: avisos meteorológicos (`/v1/warnings`), estado do mar (`/v1/islands/{id}/sea`), observações das estações (`/v1/islands/{id}/observations`) e sismos (`/v1/earthquakes`). As apps dos alunos nunca falam com o IPMA diretamente.
+- Favoritos (ilhas e trilhos) guardados na conta, em `/v1/me/favorites`: `PUT` e `DELETE` em `/v1/me/favorites/{islands|trails}/{id}`, ambos idempotentes.
 - Relatos da turma: texto e fotografia sobre o tempo numa ilha, para exercitar POST, PUT e DELETE.
 - Autenticação por aluno: `clientId` e `clientSecret` trocados por um JWT em `POST /v1/auth/token`.
 - Documentação interativa em `/docs` (Swagger UI) e a especificação em `/openapi.json`.

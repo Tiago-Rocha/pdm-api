@@ -9,22 +9,50 @@ pub struct Island {
     /// globalIdLocal do IPMA para a previsão
     pub ipma_id: u32,
     pub ipma_local: &'static str,
+    /// centro aproximado, para o mapa e para o sismo mais próximo
+    pub lat: f64,
+    pub lon: f64,
+    /// caixa (lat mín, lat máx, lon mín, lon máx) onde caem as estações do IPMA da ilha
+    pub bbox: (f64, f64, f64, f64),
+    /// área dos avisos do IPMA: AOR oriental, ACE central, AOC ocidental
+    pub warning_area: &'static str,
+    /// ponto da previsão do estado do mar mais próximo (sea-locations do IPMA)
+    pub sea_id: u32,
+    pub sea_local: &'static str,
 }
 
 pub const ISLANDS: &[Island] = &[
-    Island { id: "sao-miguel", name: "São Miguel", image: "sao_miguel.jpg", ipma_id: 3420300, ipma_local: "Ponta Delgada" },
-    Island { id: "santa-maria", name: "Santa Maria", image: "santa_maria.jpg", ipma_id: 3410100, ipma_local: "Vila do Porto" },
-    Island { id: "terceira", name: "Terceira", image: "terceira.jpg", ipma_id: 3430100, ipma_local: "Angra do Heroísmo" },
-    Island { id: "graciosa", name: "Graciosa", image: "graciosa.jpg", ipma_id: 3440100, ipma_local: "Santa Cruz da Graciosa" },
-    Island { id: "sao-jorge", name: "São Jorge", image: "sao_jorge.jpg", ipma_id: 3450200, ipma_local: "Velas" },
-    Island { id: "pico", name: "Pico", image: "pico.jpg", ipma_id: 3460200, ipma_local: "Madalena" },
-    Island { id: "faial", name: "Faial", image: "faial.jpg", ipma_id: 3470100, ipma_local: "Horta" },
-    Island { id: "flores", name: "Flores", image: "flores.jpg", ipma_id: 3480200, ipma_local: "Santa Cruz das Flores" },
-    Island { id: "corvo", name: "Corvo", image: "corvo.jpg", ipma_id: 3490100, ipma_local: "Vila do Corvo" },
+    Island { id: "sao-miguel", name: "São Miguel", image: "sao_miguel.jpg", ipma_id: 3420300, ipma_local: "Ponta Delgada", lat: 37.78, lon: -25.50, bbox: (37.69, 37.92, -25.88, -25.12), warning_area: "AOR", sea_id: 3420226, sea_local: "Ponta Delgada" },
+    Island { id: "santa-maria", name: "Santa Maria", image: "santa_maria.jpg", ipma_id: 3410100, ipma_local: "Vila do Porto", lat: 36.97, lon: -25.10, bbox: (36.92, 37.02, -25.20, -24.98), warning_area: "AOR", sea_id: 3420226, sea_local: "Ponta Delgada" },
+    Island { id: "terceira", name: "Terceira", image: "terceira.jpg", ipma_id: 3430100, ipma_local: "Angra do Heroísmo", lat: 38.72, lon: -27.22, bbox: (38.62, 38.82, -27.40, -27.03), warning_area: "ACE", sea_id: 3470126, sea_local: "Horta" },
+    Island { id: "graciosa", name: "Graciosa", image: "graciosa.jpg", ipma_id: 3440100, ipma_local: "Santa Cruz da Graciosa", lat: 39.05, lon: -28.01, bbox: (38.99, 39.11, -28.10, -27.93), warning_area: "ACE", sea_id: 3470126, sea_local: "Horta" },
+    Island { id: "sao-jorge", name: "São Jorge", image: "sao_jorge.jpg", ipma_id: 3450200, ipma_local: "Velas", lat: 38.65, lon: -28.08, bbox: (38.54, 38.77, -28.33, -27.74), warning_area: "ACE", sea_id: 3470126, sea_local: "Horta" },
+    Island { id: "pico", name: "Pico", image: "pico.jpg", ipma_id: 3460200, ipma_local: "Madalena", lat: 38.47, lon: -28.33, bbox: (38.38, 38.57, -28.56, -28.02), warning_area: "ACE", sea_id: 3470126, sea_local: "Horta" },
+    Island { id: "faial", name: "Faial", image: "faial.jpg", ipma_id: 3470100, ipma_local: "Horta", lat: 38.58, lon: -28.70, bbox: (38.51, 38.66, -28.85, -28.58), warning_area: "ACE", sea_id: 3470126, sea_local: "Horta" },
+    Island { id: "flores", name: "Flores", image: "flores.jpg", ipma_id: 3480200, ipma_local: "Santa Cruz das Flores", lat: 39.45, lon: -31.20, bbox: (39.36, 39.53, -31.28, -31.12), warning_area: "AOC", sea_id: 3480226, sea_local: "Santa Cruz das Flores" },
+    Island { id: "corvo", name: "Corvo", image: "corvo.jpg", ipma_id: 3490100, ipma_local: "Vila do Corvo", lat: 39.70, lon: -31.10, bbox: (39.66, 39.73, -31.14, -31.07), warning_area: "AOC", sea_id: 3480226, sea_local: "Santa Cruz das Flores" },
 ];
 
 pub fn island(id: &str) -> Option<&'static Island> {
     ISLANDS.iter().find(|i| i.id == id)
+}
+
+/// A ilha em cuja caixa cai o ponto (para as estações do IPMA).
+pub fn island_at(lat: f64, lon: f64) -> Option<&'static Island> {
+    ISLANDS.iter().find(|i| {
+        let (a, b, c, d) = i.bbox;
+        (a..=b).contains(&lat) && (c..=d).contains(&lon)
+    })
+}
+
+/// A ilha com o centro mais perto do ponto (para os sismos, que caem no mar).
+pub fn nearest_island(lat: f64, lon: f64) -> &'static Island {
+    let dist = |i: &Island| {
+        let dx = (i.lon - lon) * lat.to_radians().cos();
+        let dy = i.lat - lat;
+        dx * dx + dy * dy
+    };
+    ISLANDS.iter().min_by(|a, b| dist(a).total_cmp(&dist(b))).expect("há ilhas")
 }
 
 #[derive(Serialize, Clone, Copy)]
