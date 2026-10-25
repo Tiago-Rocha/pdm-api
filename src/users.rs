@@ -218,6 +218,23 @@ pub async fn logout(State(st): State<AppState>, body: Option<Json<RefreshRequest
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+pub struct EditMe {
+    name: String,
+}
+
+/// PUT /v1/me: muda o nome do utilizador (o que aparece nos relatos).
+pub async fn update_me(State(st): State<AppState>, u: User, body: Option<Json<EditMe>>) -> ApiResult<Json<Value>> {
+    let Json(e) = body.ok_or_else(|| ApiError::BadRequest("Envia JSON com name.".into()))?;
+    let name = clean_name(&e.name)?;
+    let (email,): (String,) = sqlx::query_as("UPDATE users SET name = $1 WHERE id = $2 RETURNING email")
+        .bind(&name)
+        .bind(u.id)
+        .fetch_one(&st.db)
+        .await?;
+    Ok(Json(json!({ "id": u.id, "email": email, "name": name })))
+}
+
 /// DELETE /v1/me: apaga a conta do utilizador, os favoritos, as sessões e os relatos dele.
 pub async fn delete_account(State(st): State<AppState>, u: User) -> ApiResult<StatusCode> {
     let photos: Vec<(Option<String>,)> = sqlx::query_as("SELECT photo FROM reports WHERE user_id = $1").bind(u.id).fetch_all(&st.db).await?;

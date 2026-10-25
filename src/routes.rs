@@ -155,7 +155,6 @@ pub async fn forecast(State(st): State<AppState>, _s: Student, Path(id): Path<St
 #[serde(rename_all = "camelCase")]
 pub struct IslandFilter {
     island_id: Option<String>,
-    limit: Option<i64>,
 }
 
 pub async fn trails(State(st): State<AppState>, _s: Student, Query(q): Query<IslandFilter>) -> ApiResult<Json<Value>> {
@@ -411,28 +410,37 @@ async fn remove_photo(st: &AppState, photo: &Option<String>) {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportFilter {
+    island_id: Option<String>,
+    limit: Option<i64>,
+    /// só os relatos de quem pede: do utilizador, ou da app quando o token é só da app
+    mine: Option<bool>,
+}
+
 pub async fn list_reports(
     State(st): State<AppState>,
     Student(c): Student,
-    Query(q): Query<IslandFilter>,
+    Query(q): Query<ReportFilter>,
 ) -> ApiResult<Json<Value>> {
     let limit = q.limit.unwrap_or(50).clamp(1, 100);
-    let rows: Vec<ReportRow> = match &q.island_id {
-        Some(id) => {
-            find_island(id)?;
-            sqlx::query_as(&format!("{REPORT_SELECT} WHERE r.island_id = $1 ORDER BY r.created_at DESC LIMIT $2"))
-                .bind(id)
-                .bind(limit)
-                .fetch_all(&st.db)
-                .await?
-        }
-        None => {
-            sqlx::query_as(&format!("{REPORT_SELECT} ORDER BY r.created_at DESC LIMIT $1"))
-                .bind(limit)
-                .fetch_all(&st.db)
-                .await?
-        }
-    };
+    if let Some(id) = &q.island_id {
+        find_island(id)?;
+    }
+    let rows: Vec<ReportRow> = sqlx::query_as(&format!(
+        "{REPORT_SELECT}
+         WHERE ($1::text IS NULL OR r.island_id = $1)
+           AND (NOT $2 OR (CASE WHEN $3::uuid IS NOT NULL THEN r.user_id = $3 ELSE r.student_id = $4 AND r.user_id IS NULL END))
+         ORDER BY r.created_at DESC LIMIT $5"
+    ))
+    .bind(&q.island_id)
+    .bind(q.mine.unwrap_or(false))
+    .bind(c.uid)
+    .bind(c.sub)
+    .bind(limit)
+    .fetch_all(&st.db)
+    .await?;
     Ok(Json(Value::Array(rows.iter().map(|r| report_json(&st, r, &c)).collect())))
 }
 

@@ -329,6 +329,88 @@
      }
     }
    },
+   "put": {
+    "tags": [
+     "Autenticação"
+    ],
+    "summary": "Mudar o nome do utilizador",
+    "description": "O nome novo aparece logo nos relatos. Precisa do token de um utilizador.",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EditMe"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "O utilizador atualizado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/User"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Nome inválido.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "bad_request",
+          "message": "O nome tem de ter entre 1 e 60 caracteres."
+         }
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "unauthorized",
+          "message": "O token expirou. Pede um novo em POST /v1/auth/token."
+         }
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "O token é só da app: falta o login de um utilizador.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        },
+        "example": {
+         "error": {
+          "code": "forbidden",
+          "message": "Este pedido é de um utilizador: faz login em POST /v1/auth/login e usa o token que vem na resposta."
+         }
+        }
+       }
+      }
+     }
+    }
+   },
    "delete": {
     "tags": [
      "Autenticação"
@@ -1367,6 +1449,16 @@
        "default": 50,
        "minimum": 1,
        "maximum": 100
+      }
+     },
+     {
+      "name": "mine",
+      "in": "query",
+      "required": false,
+      "description": "true: só os teus relatos (do utilizador com login, ou da app se o token for só da app).",
+      "schema": {
+       "type": "boolean",
+       "example": true
       }
      }
     ],
@@ -2927,6 +3019,19 @@
      "expiresIn",
      "refreshToken",
      "user"
+    ]
+   },
+   "EditMe": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "example": "Ana Sousa",
+      "description": "1 a 60 caracteres."
+     }
+    },
+    "required": [
+     "name"
     ]
    }
   }

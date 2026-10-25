@@ -112,7 +112,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/auth/login", post(users::login))
         .route("/auth/refresh", post(users::refresh))
         .route("/auth/logout", post(users::logout))
-        .route("/me", get(routes::me).delete(users::delete_account))
+        .route("/me", get(routes::me).put(users::update_me).delete(users::delete_account))
         .route("/me/favorites", get(routes::favorites))
         .route("/me/favorites/{kind}/{id}", put(routes::add_favorite).delete(routes::remove_favorite))
         .route("/islands", get(routes::islands))
