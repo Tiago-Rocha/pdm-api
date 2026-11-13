@@ -7,6 +7,7 @@ Em produção em **https://api-pdm.sublimecipher.com** (documentação em `/docs
 - Ilhas e trilhos dos Açores, e a previsão a 5 dias do IPMA (dados abertos, com cache de 30 minutos).
 - Outros dados do IPMA, normalizados e com cache: avisos meteorológicos (`/v1/warnings`), estado do mar (`/v1/islands/{id}/sea`), observações das estações (`/v1/islands/{id}/observations`) e sismos (`/v1/earthquakes`). As apps dos alunos nunca falam com o IPMA diretamente.
 - Favoritos (ilhas e trilhos) de cada utilizador, em `/v1/me/favorites`: `PUT` e `DELETE` em `/v1/me/favorites/{islands|trails}/{id}`, ambos idempotentes.
+- Logs da app em `POST /v1/logs`: erros e o que a app fez, com contexto (ecrã, ilha, versão). A API junta quem mandou e passa-os ao OpenObserve, na stream `apps`; a app nunca vê as credenciais do OpenObserve.
 - Relatos da turma: texto e fotografia sobre o tempo numa ilha, para exercitar POST, PUT e DELETE.
 - Autenticação em dois níveis. A app (de um aluno ou de um grupo) tem `clientId` e `clientSecret`, trocados por um JWT em `POST /v1/auth/token`. Dentro de cada app, as pessoas criam conta e fazem login (`/v1/auth/register`, `/login`, `/refresh`, `/logout`): access token de 15 minutos e refresh token de 30 dias, guardado só em hash. `PUT /v1/me` muda o nome e `DELETE /v1/me` apaga a conta.
 - Documentação interativa em `/docs` (Swagger UI) e a especificação em `/openapi.json`.

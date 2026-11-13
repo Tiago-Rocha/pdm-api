@@ -28,6 +28,9 @@
   },
   {
    "name": "Relatos"
+  },
+  {
+   "name": "Logs"
   }
  ],
  "paths": {
@@ -2009,6 +2012,81 @@
      }
     }
    }
+  },
+  "/v1/logs": {
+   "post": {
+    "tags": [
+     "Logs"
+    ],
+    "summary": "Mandar linhas de log da app",
+    "description": "A app manda erros e o que fez; a API junta quem mandou (clientId e, com login, o utilizador) e passa ao OpenObserve. Uma linha (objeto) ou até 50 (lista). Cada linha tem message e level (debug, info, warn, error, fatal; por omissão info); os outros campos são contexto (ecrã, ilha, versão, stack). Texto até 8000 caracteres por campo, até 30 campos por linha.",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "oneOf": [
+         {
+          "$ref": "#/components/schemas/LogLine"
+         },
+         {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+           "$ref": "#/components/schemas/LogLine"
+          }
+         }
+        ]
+       },
+       "example": {
+        "level": "error",
+        "message": "Null check operator used on a null value",
+        "screen": "forecast",
+        "island": "corvo",
+        "version": "a1b2c3d",
+        "platform": "web"
+       }
+      }
+     }
+    },
+    "responses": {
+     "202": {
+      "description": "Aceite.",
+      "content": {
+       "application/json": {
+        "example": {
+         "accepted": 1
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Linha sem message, level desconhecido ou demasiadas linhas.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sem token, token inválido ou expirado.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -3033,6 +3111,28 @@
     "required": [
      "name"
     ]
+   },
+   "LogLine": {
+    "type": "object",
+    "required": [
+     "message"
+    ],
+    "properties": {
+     "level": {
+      "type": "string",
+      "enum": [
+       "debug",
+       "info",
+       "warn",
+       "error",
+       "fatal"
+      ]
+     },
+     "message": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": true
    }
   }
  }

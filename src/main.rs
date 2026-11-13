@@ -3,6 +3,7 @@
 //! Ilhas, trilhos e os dados reais do IPMA (previsão, avisos, mar, sismos e estações)
 //! para a app dos alunos, contas de utilizador dentro da app de cada grupo, favoritos
 //! sincronizados e um feed de relatos (texto e fotografia) para exercitarem POST, PUT e DELETE.
+mod applog;
 mod auth;
 mod data;
 mod error;
@@ -49,6 +50,8 @@ pub struct AppState {
     pub bugs: Arc<std::sync::atomic::AtomicBool>,
     /// placar ao vivo dos exercícios de ordenar código, em memória
     pub play: play::Shared,
+    /// OpenObserve, stream `apps`: os logs que as apps mandam em POST /v1/logs
+    pub o2_apps: Option<usage::OpenObserve>,
 }
 
 const OPENAPI: &str = include_str!("openapi.json");
@@ -85,6 +88,12 @@ async fn main() -> anyhow::Result<()> {
         (Ok(url), Ok(user), Ok(password)) if !url.is_empty() => Some(usage::OpenObserve { url, user, password }),
         _ => None,
     };
+    // a mesma instância, noutra stream: .../default/pdm-api/_json passa a .../default/apps/_json
+    let o2_apps = o2.as_ref().and_then(|o| {
+        let mut parts = o.url.rsplitn(3, '/');
+        let (_json, _stream, base) = (parts.next()?, parts.next()?, parts.next()?);
+        Some(usage::OpenObserve { url: format!("{base}/apps/_json"), user: o.user.clone(), password: o.password.clone() })
+    });
     let usage = usage::spawn(
         db.clone(),
         http.clone(),
@@ -98,6 +107,7 @@ async fn main() -> anyhow::Result<()> {
         usage,
         bugs: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         play: Arc::new(play::Store::default()),
+        o2_apps,
         ipma: Arc::new(ipma::Cache::default()),
         feeds: Arc::new(feeds::Feeds::default()),
         jwt_secret: Arc::new(var("JWT_SECRET")?.into_bytes()),
@@ -127,6 +137,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/reports", get(routes::list_reports).post(routes::create_report))
         .route("/reports/{id}", get(routes::get_report).put(routes::update_report).delete(routes::delete_report))
         .route("/reports/{id}/photo", put(routes::put_photo))
+        .route("/logs", post(applog::post_logs))
         .route("/play/{room}", get(play::get_room))
         .route("/play/{room}/{puzzle}", get(play::get_board).post(play::post_move));
 
