@@ -188,10 +188,39 @@ async fn check_refresh(st: &AppState, token: &str) -> ApiResult<(Uuid, Uuid)> {
     }
 }
 
+/// A app (clientId e nome) a que pertence um refresh token, mesmo expirado ou revogado. Só serve para o registo de uso.
+async fn app_of_refresh(st: &AppState, token: &str) -> Option<(String, String)> {
+    let rid = Uuid::parse_str(token.trim().split_once('.')?.0).ok()?;
+    sqlx::query_as(
+        "SELECT s.client_id, s.name FROM refresh_tokens r JOIN users u ON u.id = r.user_id JOIN students s ON s.id = u.app_id WHERE r.id = $1",
+    )
+    .bind(rid)
+    .fetch_optional(&st.db)
+    .await
+    .ok()
+    .flatten()
+}
+
+/// Junta ao resultado a app dona do refresh token, para o pedido não ficar anónimo no registo.
+async fn logged_refresh<T: IntoResponse>(st: &AppState, token: &str, res: ApiResult<T>, ok: &'static str, failed: &'static str) -> ApiResult<Response> {
+    let Some((client_id, name)) = app_of_refresh(st, token).await else {
+        return res.map(IntoResponse::into_response);
+    };
+    Ok(match res {
+        Ok(v) => logged(v, &client_id, &name, ok),
+        Err(e) => logged(e, &client_id, &name, failed),
+    })
+}
+
 /// POST /v1/auth/refresh: um access token novo. O refresh token fica o mesmo até ao logout ou aos 30 dias.
-pub async fn refresh(State(st): State<AppState>, body: Option<Json<RefreshRequest>>) -> ApiResult<Json<Value>> {
+pub async fn refresh(State(st): State<AppState>, body: Option<Json<RefreshRequest>>) -> ApiResult<Response> {
     let Json(r) = body.ok_or_else(|| ApiError::BadRequest("Envia JSON com refreshToken.".into()))?;
-    let (_, uid) = check_refresh(&st, &r.refresh_token).await?;
+    let res = new_access(&st, &r.refresh_token).await;
+    logged_refresh(&st, &r.refresh_token, res, "user_refresh", "user_refresh_failed").await
+}
+
+async fn new_access(st: &AppState, refresh_token: &str) -> ApiResult<Json<Value>> {
+    let (_, uid) = check_refresh(st, refresh_token).await?;
     let (email, name, app_id, client_id, app_name): (String, String, Uuid, String, String) = sqlx::query_as(
         "SELECT u.email, u.name, s.id, s.client_id, s.name FROM users u JOIN students s ON s.id = u.app_id WHERE u.id = $1",
     )
@@ -204,15 +233,20 @@ pub async fn refresh(State(st): State<AppState>, body: Option<Json<RefreshReques
         "accessToken": access,
         "tokenType": "Bearer",
         "expiresIn": auth::USER_TOKEN_TTL_SECS,
-        "refreshToken": r.refresh_token.trim(),
+        "refreshToken": refresh_token.trim(),
         "user": { "id": uid, "email": email, "name": name },
     })))
 }
 
 /// POST /v1/auth/logout: o refresh token deixa de valer. Repetir não faz mal.
-pub async fn logout(State(st): State<AppState>, body: Option<Json<RefreshRequest>>) -> ApiResult<StatusCode> {
+pub async fn logout(State(st): State<AppState>, body: Option<Json<RefreshRequest>>) -> ApiResult<Response> {
     let Json(r) = body.ok_or_else(|| ApiError::BadRequest("Envia JSON com refreshToken.".into()))?;
-    if let Ok((rid, _)) = check_refresh(&st, &r.refresh_token).await {
+    let res = end_session(&st, &r.refresh_token).await;
+    logged_refresh(&st, &r.refresh_token, res, "user_logout", "user_logout").await
+}
+
+async fn end_session(st: &AppState, refresh_token: &str) -> ApiResult<StatusCode> {
+    if let Ok((rid, _)) = check_refresh(st, refresh_token).await {
         sqlx::query("UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1").bind(rid).execute(&st.db).await?;
     }
     Ok(StatusCode::NO_CONTENT)

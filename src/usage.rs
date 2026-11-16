@@ -41,6 +41,12 @@ fn header_str(req: &Request, name: &str) -> Option<String> {
     req.headers().get(name).and_then(|v| v.to_str().ok()).map(|s| s.chars().take(300).collect())
 }
 
+fn who_validation() -> Validation {
+    let mut v = Validation::default();
+    v.validate_exp = false;
+    v
+}
+
 /// Middleware: mede cada pedido e envia um evento para o registo.
 pub async fn track(State(st): State<AppState>, req: Request, next: Next) -> Response {
     let path = req.uri().path().to_string();
@@ -59,7 +65,8 @@ pub async fn track(State(st): State<AppState>, req: Request, next: Next) -> Resp
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .and_then(|t| decode::<Claims>(t, &DecodingKey::from_secret(&st.jwt_secret), &Validation::default()).ok())
+        // só para saber quem pediu: um token expirado (assinatura válida) também diz de que app é
+        .and_then(|t| decode::<Claims>(t, &DecodingKey::from_secret(&st.jwt_secret), &who_validation()).ok())
         .map(|d| d.claims);
 
     let res = next.run(req).await;
