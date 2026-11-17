@@ -1,5 +1,5 @@
 //! Registo de uso: um evento por pedido, com o aluno que o fez.
-//! Vai para a tabela request_log e, se configurados, para o OpenObserve (O2_*) e para o Datadog (DD_API_KEY).
+//! Vai para a tabela request_log e, se configurado, para o OpenObserve (O2_*).
 use std::time::{Duration, Instant};
 
 use axum::extract::{Request, State};
@@ -100,11 +100,10 @@ pub struct OpenObserve {
     pub password: String,
 }
 
-/// Tarefa de fundo: junta os eventos em lotes e grava-os na base de dados, no OpenObserve e no Datadog.
-pub fn spawn(db: PgPool, http: reqwest::Client, dd_api_key: Option<String>, dd_site: String, o2: Option<OpenObserve>) -> Sender {
+/// Tarefa de fundo: junta os eventos em lotes e grava-os na base de dados e no OpenObserve.
+pub fn spawn(db: PgPool, http: reqwest::Client, o2: Option<OpenObserve>) -> Sender {
     let (tx, mut rx) = mpsc::unbounded_channel::<Event>();
     tokio::spawn(async move {
-        let host = std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()).unwrap_or_else(|_| "pdm-api".into());
         loop {
             let Some(first) = rx.recv().await else { break };
             let mut batch = vec![first];
@@ -120,9 +119,6 @@ pub fn spawn(db: PgPool, http: reqwest::Client, dd_api_key: Option<String>, dd_s
             save(&db, &batch).await;
             if let Some(o2) = &o2 {
                 send_openobserve(&http, o2, &batch).await;
-            }
-            if let Some(key) = &dd_api_key {
-                send_datadog(&http, key, &dd_site, &host, &batch).await;
             }
         }
     });
@@ -150,40 +146,6 @@ async fn save(db: &PgPool, batch: &[Event]) {
         if let Err(err) = r {
             tracing::warn!("request_log: {err}");
         }
-    }
-}
-
-async fn send_datadog(http: &reqwest::Client, key: &str, site: &str, host: &str, batch: &[Event]) {
-    let logs: Vec<_> = batch
-        .iter()
-        .map(|e| {
-            let who = e.client_id.as_deref().unwrap_or("anonimo");
-            let mut tags = vec!["env:prod".to_string(), format!("client_id:{who}")];
-            if let Some(ev) = e.event {
-                tags.push(format!("event:{ev}"));
-            }
-            json!({
-                "ddsource": "rust",
-                "service": "pdm-api",
-                "hostname": host,
-                "ddtags": tags.join(","),
-                "status": if e.status >= 500 { "error" } else if e.status >= 400 { "warn" } else { "info" },
-                "message": format!("{} {} {} {}ms {}", e.method, e.path, e.status, e.duration.as_millis(),
-                                   e.name.as_deref().unwrap_or("(sem token)")),
-                "date": e.at.unix_timestamp() * 1000,
-                "duration": e.duration.as_nanos() as u64,
-                "event": e.event,
-                "usr": { "id": e.client_id, "name": e.name },
-                "http": { "method": e.method, "url": e.path, "status_code": e.status, "useragent": e.user_agent },
-                "network": { "client": { "ip": e.ip } },
-            })
-        })
-        .collect();
-    let url = format!("https://http-intake.logs.{site}/api/v2/logs");
-    match http.post(url).header("DD-API-KEY", key).json(&logs).send().await {
-        Ok(r) if r.status().is_success() => {}
-        Ok(r) => tracing::warn!("Datadog respondeu {}", r.status()),
-        Err(err) => tracing::warn!("Datadog falhou: {err}"),
     }
 }
 

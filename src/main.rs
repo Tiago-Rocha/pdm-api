@@ -44,7 +44,7 @@ pub struct AppState {
     pub media_dir: Arc<PathBuf>,
     /// endereço público, sem barra no fim, para os URLs das imagens
     pub public_url: Arc<String>,
-    /// registo de uso (base de dados e Datadog)
+    /// registo de uso (base de dados e OpenObserve)
     pub usage: usage::Sender,
     /// exercício de aula: erros de propósito nas respostas, ligados em /admin/bugs
     pub bugs: Arc<std::sync::atomic::AtomicBool>,
@@ -80,10 +80,6 @@ async fn main() -> anyhow::Result<()> {
         .timeout(std::time::Duration::from_secs(8))
         .user_agent("pdm-api (UC de PDM, Universidade dos Açores)")
         .build()?;
-    let dd_api_key = std::env::var("DD_API_KEY").ok().filter(|k| !k.trim().is_empty());
-    if dd_api_key.is_none() {
-        tracing::warn!("sem DD_API_KEY: o registo de uso só vai para a base de dados");
-    }
     let o2 = match (std::env::var("O2_URL"), std::env::var("O2_USER"), std::env::var("O2_PASSWORD")) {
         (Ok(url), Ok(user), Ok(password)) if !url.is_empty() => Some(usage::OpenObserve { url, user, password }),
         _ => None,
@@ -94,13 +90,10 @@ async fn main() -> anyhow::Result<()> {
         let (_json, _stream, base) = (parts.next()?, parts.next()?, parts.next()?);
         Some(usage::OpenObserve { url: format!("{base}/apps/_json"), user: o.user.clone(), password: o.password.clone() })
     });
-    let usage = usage::spawn(
-        db.clone(),
-        http.clone(),
-        dd_api_key,
-        std::env::var("DD_SITE").unwrap_or_else(|_| "datadoghq.eu".into()),
-        o2,
-    );
+    if o2.is_none() {
+        tracing::warn!("sem O2_URL, O2_USER e O2_PASSWORD: o registo de uso só vai para a base de dados");
+    }
+    let usage = usage::spawn(db.clone(), http.clone(), o2);
     let state = AppState {
         db,
         http,
